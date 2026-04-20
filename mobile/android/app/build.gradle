@@ -12,6 +12,17 @@ android {
         versionCode 29
         versionName "2.1.1"
     }
+    flavorDimensions "brand"
+    productFlavors {
+        fchat {
+            dimension "brand"
+            applicationId "net.f_list.fchat"
+        }
+        horizon {
+            dimension "brand"
+            applicationId "net.f_list.horizon"
+        }
+    }
     buildTypes {
         release {
             minifyEnabled true
