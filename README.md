@@ -15,6 +15,9 @@
       - [AppImage](#appimage)
       - [Tarball (tar.gz)](#tarball-targz)
       - [Arch-based (AUR)](#arch-based-aur)
+  - [Android](#android)
+    - [Prerequisites](#prerequisites)
+    - [Building](#building)
   - [From Source](#from-source)
 - [Usage](#usage)
   - [Getting started](#getting-started)
@@ -202,6 +205,44 @@ Horizon has excellent Linux support. Read more at [horizon-packages](https://git
   cd fchat-horizon-bin
   makepkg -si
   ```
+
+## Android
+
+Horizon is available as a native Android application that wraps the web app in a WebView.
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) >= 24 and [pnpm](https://pnpm.io/)
+- JDK 17+ (e.g. `sudo pacman -S jdk17-openjdk` / `sudo apt install openjdk-17-jdk`)
+- [Android SDK](https://developer.android.com/studio) with API 35 platform installed  
+  (Android Studio is the easiest way to get this)
+
+### Building
+
+1. Install dependencies:
+
+   ```bash
+   pnpm install
+   ```
+
+2. Compile the web assets (outputs to `mobile/www/`):
+
+   ```bash
+   pnpm run build:mobile:dist
+   ```
+
+3. Build the Android APK (Gradle will copy the web assets automatically):
+
+   ```bash
+   cd mobile/android
+   ./gradlew assembleDebug
+   ```
+
+   The APK will be at `mobile/android/app/build/outputs/apk/debug/app-debug.apk`.
+
+   For a release build, use `./gradlew assembleRelease` — you will need to configure signing in `app/build.gradle`.
+
+   Alternatively, open `mobile/android/` in Android Studio and build from there.
 
 ## From Source
 

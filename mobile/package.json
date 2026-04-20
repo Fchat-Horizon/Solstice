@@ -1,0 +1,14 @@
+{
+  "name": "horizon-mobile",
+  "version": "2.1.1",
+  "displayName": "Horizon",
+  "author": "The F-List Team and Horizon Contributors",
+  "description": "F-List.net Chat Client - Android",
+  "main": "main.js",
+  "license": "MPL-2.0",
+  "scripts": {
+    "build": "node ../webpack development",
+    "build:dist": "node ../webpack production",
+    "watch": "node ../webpack watch"
+  }
+}

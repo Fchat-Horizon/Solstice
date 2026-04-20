@@ -1,0 +1,42 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    compileSdk 35
+    namespace 'net.f_list.fchat'
+
+    defaultConfig {
+        applicationId "net.f_list.fchat"
+        minSdk 26
+        targetSdk 35
+        versionCode 29
+        versionName "2.1.1"
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+}
+
+// Copy webpack output to Android assets before every build
+task copyWebAssets(type: Copy) {
+    from '../../www'
+    into 'src/main/assets/www'
+}
+preBuild.dependsOn copyWebAssets
