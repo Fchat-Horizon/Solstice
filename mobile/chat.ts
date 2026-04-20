@@ -49,6 +49,7 @@ const version = (<{version: string}>require('./package.json')).version; //tslint
 (<any>window)['setupPlatform'] = (platform: string) => { //tslint:disable-line:no-any
     Axios.defaults.params = { __fchat: `mobile-${platform}/${version}` };
 };
+document.documentElement.dataset.mobilePlatform = 'true';
 
 const connection = new Connection('F-Chat 3.0 (Mobile)', appVersion, Socket);
 initCore(connection, new GeneralSettings() as any, Logs, SettingsStore, Notifications);

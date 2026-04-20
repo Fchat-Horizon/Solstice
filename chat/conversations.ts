@@ -126,10 +126,10 @@ abstract class Conversation implements Interfaces.Conversation {
   }
 
   clearText(): void {
-    setImmediate(() => {
+    setTimeout(() => {
       this.enteredText = '';
       core.cache.conversationDraftCache.deregister(this.name);
-    });
+    }, 0);
   }
 
   async send(): Promise<void> {

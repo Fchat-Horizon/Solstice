@@ -138,7 +138,7 @@ export class Logs implements Logging {
 
 export async function getGeneralSettings(): Promise<GeneralSettings | undefined> {
     const file = await NativeFile.read('!settings');
-    if(file === undefined) return undefined;
+    if(file == null) return undefined;
     const settings = <GeneralSettings>_.merge(new GeneralSettings(),  JSON.parse(file));
     if(settings.host === 'wss://chat.f-list.net:9799') settings.host = 'wss://chat.f-list.net/chat2';
     return settings;
@@ -151,7 +151,7 @@ export async function setGeneralSettings(value: GeneralSettings): Promise<void> 
 export class SettingsStore implements Settings.Store {
     async get<K extends keyof Settings.Keys>(key: K, character: string = core.connection.character): Promise<Settings.Keys[K] | undefined> {
         const file = await NativeFile.read(`${character}/${key}`);
-        if(file === undefined) return undefined;
+        if(file == null) return undefined;
         return <Settings.Keys[K]>JSON.parse(file);
     }
 
