@@ -7,6 +7,7 @@ import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -16,6 +17,7 @@ import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.webkit.JsResult
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -40,6 +42,30 @@ class MainActivity : Activity() {
 		setContentView(R.layout.activity_main)
 		if(BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
 		webView = findViewById(R.id.webview)
+
+		// On many physical devices (especially OEM Android 11+), adjustResize doesn't reliably
+		// resize the WebView when the soft keyboard appears. We handle it manually here.
+		val rootView = window.decorView
+		rootView.viewTreeObserver.addOnGlobalLayoutListener {
+			val rect = Rect()
+			rootView.getWindowVisibleDisplayFrame(rect)
+			val heightDiff = rootView.height - rect.bottom
+			val params = webView.layoutParams
+			if (heightDiff > rootView.height * 0.15) {
+				// Keyboard visible — shrink WebView to the visible area
+				val newHeight = rect.bottom - rect.top
+				if (params.height != newHeight) {
+					params.height = newHeight
+					webView.layoutParams = params
+				}
+			} else {
+				// Keyboard hidden — restore WebView to full height
+				if (params.height != ViewGroup.LayoutParams.MATCH_PARENT) {
+					params.height = ViewGroup.LayoutParams.MATCH_PARENT
+					webView.layoutParams = params
+				}
+			}
+		}
 		webView.settings.javaScriptEnabled = true
 		webView.settings.mediaPlaybackRequiresUserGesture = false
 		webView.loadUrl("file:///android_asset/www/index.html")
