@@ -1,10 +1,13 @@
 package net.f_list.fchat
 
+import android.Manifest
+import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -73,6 +76,11 @@ class Notifications(private val ctx: Context) {
 
 	@JavascriptInterface
 	fun requestPermission() {
-
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+			val activity = ctx as? Activity ?: return
+			if (activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+				activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 0)
+			}
+		}
 	}
 }

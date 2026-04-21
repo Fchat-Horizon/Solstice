@@ -19,6 +19,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.webkit.JsResult
+import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -91,6 +92,10 @@ class MainActivity : Activity() {
 			override fun onJsAlert(view: WebView, url: String, message: String, result: JsResult): Boolean {
 				AlertDialog.Builder(this@MainActivity).setTitle(R.string.app_name).setMessage(message).setPositiveButton(R.string.ok, { _, _ -> }).setOnDismissListener({ result.confirm() }).show()
 				return true
+			}
+
+			override fun onPermissionRequest(request: PermissionRequest) {
+				request.grant(request.resources)
 			}
 
 			override fun onJsConfirm(view: WebView, url: String, message: String, result: JsResult): Boolean {
