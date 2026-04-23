@@ -29,16 +29,39 @@ class Notifications(private val ctx: Context) {
 		}
 	}
 
-	@JavascriptInterface
-	fun notify(notify: Boolean, title: String, text: String, icon: String, sound: String?, data: String?): Int {
-		if(sound != null) {
+	private fun playSoundFile(sound: String) {
+		try {
 			val player = MediaPlayer()
 			val asset = ctx.assets.openFd("www/sounds/$sound.mp3")
 			player.setDataSource(asset.fileDescriptor, asset.startOffset, asset.length)
-			player.setAudioStreamType(AudioManager.STREAM_NOTIFICATION)
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+				player.setAudioAttributes(
+					AudioAttributes.Builder()
+						.setUsage(AudioAttributes.USAGE_NOTIFICATION)
+						.setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+						.build()
+				)
+			} else {
+				@Suppress("DEPRECATION")
+				player.setAudioStreamType(AudioManager.STREAM_NOTIFICATION)
+			}
 			player.prepare()
 			player.start()
 			player.setOnCompletionListener { it.release() }
+		} catch(e: Exception) {
+			// Sound file not found or playback error — silently ignore
+		}
+	}
+
+	@JavascriptInterface
+	fun playSound(sound: String) {
+		playSoundFile(sound)
+	}
+
+	@JavascriptInterface
+	fun notify(notify: Boolean, title: String, text: String, icon: String, sound: String?, data: String?): Int {
+		if(sound != null) {
+			playSoundFile(sound)
 		}
 		if(!notify) {
 			if((ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager).ringerMode != AudioManager.RINGER_MODE_SILENT) {

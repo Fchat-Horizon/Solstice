@@ -48,6 +48,7 @@
             </div>
         </div>
         <chat v-else :ownCharacters="characters" :defaultCharacter="defaultCharacter" ref="chat"></chat>
+        <app-settings-dialog ref="appSettingsDialog"></app-settings-dialog>
         <modal :buttons="false" ref="profileViewer" dialogClass="profile-viewer">
             <character-page :authenticated="true" :oldApi="true" :name="profileName"></character-page>
             <template slot="title">{{profileName}} <a class="btn" @click="openProfileInBrowser"><i class="fa fa-external-link-alt"></i></a>
@@ -68,6 +69,8 @@
     import {SimpleCharacter} from '../interfaces';
     import CharacterPage from '../site/character_page/character_page.vue';
     import {appVersion, GeneralSettings, getGeneralSettings, setGeneralSettings, SettingsStore} from './filesystem';
+    import AppSettingsDialog from './AppSettingsDialog.vue';
+    import { EventBus } from '../chat/preview/event-bus';
 
     declare global {
         interface Window {
@@ -87,7 +90,7 @@
     }
 
     export default Vue.extend({
-        components: {chat: Chat, modal: Modal, characterPage: CharacterPage},
+        components: {chat: Chat, modal: Modal, characterPage: CharacterPage, 'app-settings-dialog': AppSettingsDialog},
         data() {
             return {
                 showAdvanced: false,
@@ -166,6 +169,12 @@
             }
             if(settings.account.length > 0) this.saveLogin = true;
             this.settings = settings;
+            (core.state as any).generalSettings = settings;
+            (window as any).__generalSettings = settings;
+            (window as any).__setGeneralSettings = setGeneralSettings;
+            EventBus.$on('open-mobile-app-settings', () => {
+                (<any>this.$refs['appSettingsDialog']).show();
+            });
         },
     });
 </script>

@@ -8,18 +8,23 @@
     dialogClass="modal-70"
     iconClass="fas fa-user-gear"
   >
+    <select
+      v-if="isMobilePlatform"
+      class="form-select"
+      style="flex-shrink: 0; margin-bottom: 10px"
+      :value="selectedTab"
+      @change="onTabSelect"
+    >
+      <option v-for="(tab, i) in settingsTabs" :key="i" :value="String(i)">
+        {{ tab }}
+      </option>
+    </select>
     <tabs
+      v-else
       style="flex-shrink: 0; margin-bottom: 10px"
       v-model="selectedTab"
       :fullWidth="true"
-      :tabs="[
-        l('settings.tabs.chat'),
-        l('settings.tabs.appearance'),
-        l('settings.tabs.notifications'),
-        l('settings.tabs.profiles'),
-        l('settings.tabs.smartFilters'),
-        l('settings.tabs.import')
-      ]"
+      :tabs="settingsTabs"
     ></tabs>
     <div class="warning">
       <h5>{{ l('warning.info') }}</h5>
@@ -1242,6 +1247,23 @@
       },
       ignored(): readonly string[] {
         return core.characters.ignoreList;
+      },
+      isMobilePlatform(): boolean {
+        return document.documentElement.dataset.mobilePlatform === 'true';
+      },
+      settingsTabs(): string[] {
+        const base = [
+          l('settings.tabs.chat'),
+          l('settings.tabs.appearance'),
+          l('settings.tabs.notifications'),
+          l('settings.tabs.profiles'),
+          l('settings.tabs.smartFilters'),
+          l('settings.tabs.import')
+        ];
+        if (document.documentElement.dataset.mobilePlatform === 'true') {
+          base.push('App');
+        }
+        return base;
       }
     },
     methods: {
@@ -1318,11 +1340,14 @@
         this.horizonHighlightUsers = settings.horizonHighlightUsers.join(',');
         this.risingFilter = settings.risingFilter;
 
-        this.risingAvailableThemes = fs
-          .readdirSync(path.join(__dirname, 'themes'))
-          .filter(x => x.substr(-4) === '.css')
-          .map(x => x.slice(0, -4));
+        if (!this.isMobilePlatform) {
+          this.risingAvailableThemes = fs
+            .readdirSync(path.join(__dirname, 'themes'))
+            .filter(x => x.substr(-4) === '.css')
+            .map(x => x.slice(0, -4));
+        }
         this.risingCharacterTheme = settings.risingCharacterTheme;
+
         this.horizonPersistentMemberFilters =
           typeof (settings as any).horizonPersistentMemberFilters === 'boolean'
             ? (settings as any).horizonPersistentMemberFilters
@@ -1542,6 +1567,21 @@
       },
       getCharacter(name: string): Character {
         return core.characters.get(name);
+      },
+      onTabSelect(e: Event): void {
+        const value = (e.target as HTMLSelectElement).value;
+        if (
+          value === String(this.settingsTabs.length - 1) &&
+          this.isMobilePlatform
+        ) {
+          // "App" selected — open dedicated app settings dialog
+          (e.target as HTMLSelectElement).value = '0';
+          this.selectedTab = '0';
+          this.hide();
+          EventBus.$emit('open-mobile-app-settings');
+          return;
+        }
+        this.selectedTab = value;
       }
     }
   });

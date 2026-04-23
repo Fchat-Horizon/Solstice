@@ -131,7 +131,7 @@ const config = {
       [path.resolve(__dirname, '../learn/store/worker')]: path.join(__dirname, 'shims/worker-store.js'),
     },
     fallback: {
-      fs: false,
+      fs: path.join(__dirname, 'shims/fs.js'),
       tls: false,
       net: false,
     },
