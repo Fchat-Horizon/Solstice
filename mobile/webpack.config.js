@@ -127,6 +127,7 @@ const config = {
       electron: path.join(__dirname, 'shims/electron.js'),
       'electron-log': path.join(__dirname, 'shims/electron-log.js'),
       '@electron/remote': path.join(__dirname, 'shims/electron-remote.js'),
+      archiver: path.join(__dirname, 'shims/archiver.js'),
       [path.resolve(__dirname, '../electron/filesystem')]: path.join(__dirname, 'shims/electron-filesystem.js'),
       [path.resolve(__dirname, '../learn/store/worker')]: path.join(__dirname, 'shims/worker-store.js'),
     },

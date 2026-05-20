@@ -1,5 +1,5 @@
 import * as remote from '@electron/remote';
-import fs from 'node:fs';
+import fs from 'fs';
 import { ipcRenderer } from 'electron';
 import l from '../../../chat/localize';
 import * as VanillaImporter from './vanilla-importer';

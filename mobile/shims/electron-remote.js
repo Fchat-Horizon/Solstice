@@ -4,7 +4,10 @@ const fakeWindow = {
     focus: noop,
     minimize: noop,
     on: noop,
-    close: () => window.dispatchEvent(new CustomEvent('settings-window-close')),
+    close: () => {
+        window.dispatchEvent(new CustomEvent('settings-window-close'));
+        window.dispatchEvent(new CustomEvent('exporter-window-close'));
+    },
     webContents: {
         send: noop,
         session: { availableSpellCheckerLanguages: [] },

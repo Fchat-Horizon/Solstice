@@ -20,6 +20,7 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.webkit.JsResult
 import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -37,6 +38,7 @@ class MainActivity : Activity() {
 	private val backgroundPlugin = Background(this)
 	private var debugPressed = 0
 	private val debugHandler = Handler(Looper.getMainLooper())
+	private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -104,6 +106,17 @@ class MainActivity : Activity() {
 						.setPositiveButton(R.string.ok, { _, _ -> ok = true }).setNegativeButton(R.string.cancel, null).show()
 				return true
 			}
+
+			override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
+				filePathCallback?.onReceiveValue(null)
+				filePathCallback = callback
+				val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+					addCategory(Intent.CATEGORY_OPENABLE)
+					type = "*/*"
+				}
+				startActivityForResult(Intent.createChooser(intent, "Select file"), FILE_CHOOSER_REQUEST)
+				return true
+			}
 		}
 		webView.webViewClient = object : WebViewClient() {
 			override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
@@ -141,6 +154,8 @@ class MainActivity : Activity() {
 			}
 		}
 	}
+
+	companion object { private const val FILE_CHOOSER_REQUEST = 1001 }
 
 	val keepAlive = object : Runnable {
 		override fun run() {
@@ -195,6 +210,42 @@ class MainActivity : Activity() {
 			val data = intent.extras?.getString("data")
 			webView.evaluateJavascript("document.dispatchEvent(new CustomEvent('notification-clicked',{detail:{data:'$data'}}))", null)
 		}
+	}
+
+	@Suppress("DEPRECATION")
+	override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+		if (requestCode == FILE_CHOOSER_REQUEST) {
+			// Always release the WebView's file input callback (pass null — we deliver
+			// the content ourselves via evaluateJavascript so the FileReader path is bypassed).
+			filePathCallback?.onReceiveValue(null)
+			filePathCallback = null
+
+			if (resultCode == RESULT_OK && data?.data != null) {
+				val uri = data.data!!
+				try {
+					// Resolve display name
+					var fileName = "backup.zip"
+					contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+						val col = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+						if (cursor.moveToFirst() && col >= 0) fileName = cursor.getString(col)
+					}
+					// Read bytes and base64-encode for safe JS delivery
+					val bytes = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+					val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+					val safeName = fileName.replace("\\", "\\\\").replace("'", "\\'")
+					webView.evaluateJavascript(
+						"window.__mobileFilePicker && window.__mobileFilePicker('$b64','$safeName')",
+						null
+					)
+				} catch (e: Exception) {
+					webView.evaluateJavascript(
+						"window.__mobileFilePicker && window.__mobileFilePicker(null,null)",
+						null
+					)
+				}
+			}
+		}
+		super.onActivityResult(requestCode, resultCode, data)
 	}
 
 	override fun onResume() {

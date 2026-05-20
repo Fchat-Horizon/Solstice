@@ -30,6 +30,7 @@
           "
         >
           <a
+            v-if="!isMobilePlatform"
             href="https://discord.gg/JYuxqNVNtP"
             target="_blank"
             rel="noopener"
@@ -39,6 +40,7 @@
             <span class="fab fa-discord"></span>
           </a>
           <a
+            v-if="!isMobilePlatform"
             href="https://ko-fi.com/thehorizonteam"
             target="_blank"
             rel="noopener"
@@ -46,6 +48,16 @@
             title="Support us on Ko-Fi"
           >
             <span class="fa fa-coffee"></span>
+          </a>
+          <a
+            v-if="isMobilePlatform"
+            href="#"
+            @click.prevent="exportData()"
+            class="btn"
+            :title="l('settings.export.title')"
+          >
+            <span class="fa fa-file-export"></span>
+            <span class="btn-text">{{ l('settings.export.title') }}</span>
           </a>
           <a
             href="https://chat.f-list.net/stats/"
@@ -297,6 +309,9 @@
       };
     },
     computed: {
+      isMobilePlatform(): boolean {
+        return document.documentElement.dataset.mobilePlatform === 'true';
+      },
       filteredCharacters(): SimpleCharacter[] {
         const q = this.filterText.trim().toLowerCase();
         let list = (this as any).ownCharacters.slice();
@@ -545,6 +560,10 @@
 
       showLogs(): void {
         (this.$refs['logsDialog'] as InstanceType<typeof Logs>).show();
+      },
+
+      exportData(): void {
+        EventBus.$emit('open-mobile-exporter', {});
       },
 
       async connect(): Promise<void> {

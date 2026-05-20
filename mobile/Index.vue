@@ -49,6 +49,7 @@
         </div>
         <chat v-else :ownCharacters="characters" :defaultCharacter="defaultCharacter" ref="chat"></chat>
         <app-settings-dialog ref="appSettingsDialog"></app-settings-dialog>
+        <app-exporter-dialog ref="appExporterDialog"></app-exporter-dialog>
         <modal :buttons="false" ref="profileViewer" dialogClass="profile-viewer">
             <character-page :authenticated="true" :oldApi="true" :name="profileName"></character-page>
             <template slot="title">{{profileName}} <a class="btn" @click="openProfileInBrowser"><i class="fa fa-external-link-alt"></i></a>
@@ -70,6 +71,7 @@
     import CharacterPage from '../site/character_page/character_page.vue';
     import {appVersion, GeneralSettings, getGeneralSettings, setGeneralSettings, SettingsStore} from './filesystem';
     import AppSettingsDialog from './AppSettingsDialog.vue';
+    import AppExporterDialog from './AppExporterDialog.vue';
     import { EventBus } from '../chat/preview/event-bus';
 
     declare global {
@@ -90,7 +92,7 @@
     }
 
     export default Vue.extend({
-        components: {chat: Chat, modal: Modal, characterPage: CharacterPage, 'app-settings-dialog': AppSettingsDialog},
+        components: {chat: Chat, modal: Modal, characterPage: CharacterPage, 'app-settings-dialog': AppSettingsDialog, 'app-exporter-dialog': AppExporterDialog},
         data() {
             return {
                 showAdvanced: false,
@@ -152,7 +154,7 @@
                 }
             },
             openProfileInBrowser(): void {
-                window.open(`profile://${(this as any).profileName}`);
+                window.location.href = `profile://${(this as any).profileName}`;
             },
         },
         async created(): Promise<void> {
@@ -174,6 +176,9 @@
             (window as any).__setGeneralSettings = setGeneralSettings;
             EventBus.$on('open-mobile-app-settings', () => {
                 (<any>this.$refs['appSettingsDialog']).show();
+            });
+            EventBus.$on('open-mobile-exporter', () => {
+                (<any>this.$refs['appExporterDialog']).show();
             });
         },
     });

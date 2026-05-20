@@ -50,6 +50,9 @@ const version = (<{version: string}>require('./package.json')).version; //tslint
     Axios.defaults.params = { __fchat: `mobile-${platform}/${version}` };
 };
 document.documentElement.dataset.mobilePlatform = 'true';
+// window.open() is a no-op in the Android WebView — route all calls through location.href
+// so shouldOverrideUrlLoading can intercept and handle them.
+(window as any).open = (url: string) => { window.location.href = url; return null; };
 
 const connection = new Connection('F-Chat 3.0 (Mobile)', appVersion, Socket);
 initCore(connection, new GeneralSettings() as any, Logs, SettingsStore, Notifications);

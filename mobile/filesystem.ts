@@ -9,10 +9,12 @@ declare global {
     const NativeFile: {
         read(name: string): Promise<string | undefined>
         write(name: string, data: string): Promise<void>
+        writeBytes(name: string, base64: string): Promise<void>
         listDirectories(name: string): Promise<string[]>
         listFiles(name: string): Promise<string[]>
         getSize(name: string): Promise<number>
         ensureDirectory(name: string): Promise<void>
+        exportData(): string
     };
     type NativeMessage = {time: number, type: number, sender: string, text: string};
     const NativeLogs: {

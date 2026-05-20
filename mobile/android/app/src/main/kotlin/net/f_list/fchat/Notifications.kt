@@ -34,20 +34,16 @@ class Notifications(private val ctx: Context) {
 			val player = MediaPlayer()
 			val asset = ctx.assets.openFd("www/sounds/$sound.mp3")
 			player.setDataSource(asset.fileDescriptor, asset.startOffset, asset.length)
-			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-				player.setAudioAttributes(
-					AudioAttributes.Builder()
-						.setUsage(AudioAttributes.USAGE_NOTIFICATION)
-						.setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-						.build()
-				)
-			} else {
-				@Suppress("DEPRECATION")
-				player.setAudioStreamType(AudioManager.STREAM_NOTIFICATION)
-			}
-			player.prepare()
-			player.start()
+			asset.close()
+			player.setAudioAttributes(
+				AudioAttributes.Builder()
+					.setUsage(AudioAttributes.USAGE_MEDIA)
+					.setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+					.build()
+			)
+			player.setOnPreparedListener { it.start() }
 			player.setOnCompletionListener { it.release() }
+			player.prepareAsync()
 		} catch(e: Exception) {
 			// Sound file not found or playback error — silently ignore
 		}
