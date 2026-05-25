@@ -46,19 +46,19 @@
         </div>
         <div>
           <div class="userInfo-buttons-container">
-            <a
+            <button
               href="#"
               role="button"
-              class="userInfo-button-item"
+              class="userInfo-button-item btn btn-outline-secondary"
               :title="l('characterSearch.open')"
               @click.prevent="showSearch()"
             >
               <i class="fa-solid fa-search fa-fw"></i>
-            </a>
-            <a
+            </button>
+            <button
               href="#"
               role="button"
-              class="userInfo-button-item"
+              class="userInfo-button-item btn btn-outline-secondary"
               :title="l('admgr.open')"
               @click.prevent="showAdLauncher()"
             >
@@ -70,27 +70,27 @@
                   @click.stop="stopAllAds()"
                 ></span>
               </a>
-            </a>
+            </button>
 
-            <a
+            <button
               href="#"
               role="button"
-              class="userInfo-button-item"
+              class="userInfo-button-item btn btn-outline-secondary"
               :title="l('settings.character')"
               @click.prevent="showSettings()"
             >
               <i class="fa-solid fa-user-gear fa-fw"></i>
-            </a>
+            </button>
 
-            <a
+            <button
               href="#"
               role="button"
-              class="userInfo-button-item"
+              class="userInfo-button-item btn btn-outline-secondary"
               :title="l('chat.logout')"
               @click.prevent="logOut()"
             >
               <i class="fa-solid fa-sign-out-alt fa-fw"></i>
-            </a>
+            </button>
           </div>
           <note-status
             v-if="coreState.settings.risingShowUnreadOfflineCount"
@@ -116,7 +116,11 @@
 
         <div style="clear: both" class="conversationList-header d-flex">
           <span class="flex-grow-1">
-            <a href="#" @click.prevent="showAddPmPartner()" class="btn">
+            <a
+              href="#"
+              @click.prevent="showAddPmPartner()"
+              class="btn btn-link"
+            >
               {{ l('chat.pms.short') }}</a
             >
           </span>
@@ -125,7 +129,7 @@
             href="#"
             @click.prevent="showRecent()"
             :title="l('chat.recentConversations')"
-            class="btn"
+            class="btn btn-link"
             ><span class="fas fa-fw fa-history"></span> </a
           ><a
             :class="{
@@ -136,7 +140,7 @@
             href="#"
             @click.prevent="showQuickJump()"
             :title="l('quickJump.action')"
-            class="btn"
+            class="btn btn-link"
             ><span class="fas fa-fw fa-shuffle"></span
           ></a>
         </div>
@@ -203,7 +207,7 @@
 
         <div style="clear: both" class="conversationList-header d-flex">
           <span class="flex-grow-1">
-            <a href="#" @click.prevent="showChannels()" class="btn">
+            <a href="#" @click.prevent="showChannels()" class="btn btn-link">
               {{ l('chat.channels') }}</a
             >
           </span>
@@ -211,37 +215,63 @@
           <a
             href="#"
             @click.prevent="markAllAsRead()"
-            class="btn"
+            class="btn btn-link"
             :title="l('action.markAsRead')"
             ><span class="fas fa-fw fa-list-check"></span> </a
           ><a
             href="#"
             @click.prevent="showRecent(true)"
-            class="btn"
+            class="btn btn-link"
             :title="l('chat.recentConversations')"
             ><span class="fas fa-fw fa-history"></span> </a
-          ><a
-            href="#"
-            @click.prevent="showChannels()"
-            class="btn"
-            :title="l('chat.channelJoin')"
-            :class="{
-              glowing:
-                conversations.channelConversations.length === 0 &&
-                channelCanGlow
-            }"
-            ><span class="fas fa-fw fa-plus"></span
-          ></a>
+          ><dropdown
+            wrap-class="dropdown"
+            link-class="btn btn-link"
+            icon-class="fas fa-fw fa-plus"
+            link-style=""
+            :keep-open="false"
+          >
+            <button class="dropdown-item" type="button" @click="showChannels()">
+              <span class="fas fa-fw fa-hashtag"></span>
+              {{ l('chat.channelJoin') }}
+            </button>
+            <button
+              class="dropdown-item"
+              type="button"
+              @click="addChannelGroup()"
+            >
+              <span class="fas fa-fw fa-folder-plus"></span>
+              {{ l('channel.group.add') }}
+            </button>
+          </dropdown>
         </div>
 
-        <div class="list-group conversation-nav" ref="channelConversations">
+        <div ref="channelGroups">
+          <channel-group-section
+            v-for="group in sortedChannelGroups"
+            :key="group.id"
+            :group="group"
+            :conversations="channelsInGroup(group.id)"
+            :all-groups="conversations.channelGroups"
+            :start-editing="pendingRenameGroupId === group.id"
+            @editing-started="pendingRenameGroupId = null"
+            @create-and-rename="id => (pendingRenameGroupId = id)"
+          ></channel-group-section>
+        </div>
+
+        <div
+          class="list-group conversation-nav"
+          ref="channelConversations"
+          :style="sortedChannelGroups.length ? 'margin-top: 6px' : ''"
+        >
           <a
-            v-for="conversation in conversations.channelConversations"
+            v-for="conversation in ungroupedChannels"
             href="#"
             @click.prevent="conversation.show()"
             :class="getClasses(conversation)"
             class="list-group-item list-group-item-action item-channel"
             :key="conversation.key"
+            :data-channel-id="conversation.channel.id"
             @click.middle.prevent.stop="conversation.close()"
           >
             <span class="name">{{ conversation.name }}</span>
@@ -258,13 +288,6 @@
                 :class="{ active: conversation.isSendingAutomatedAds() }"
                 :aria-label="l('chat.toggleAds')"
                 @click.stop="conversation.toggleAutomatedAds()"
-              ></span>
-              <span
-                class="pin fas fa-thumbtack"
-                :class="{ active: conversation.isPinned }"
-                :aria-label="l('chat.pinTab')"
-                @click.stop="conversation.isPinned = !conversation.isPinned"
-                @mousedown.prevent
               ></span>
               <span
                 class="fas fa-times leave"
@@ -367,12 +390,31 @@
     <adCenter ref="adCenter"></adCenter>
     <settings ref="settingsDialog"></settings>
     <report-dialog ref="reportDialog"></report-dialog>
-    <user-menu ref="userMenu" :reportDialog="$refs['reportDialog']"></user-menu>
+    <user-menu
+      ref="userMenu"
+      :reportDialog="$refs['reportDialog']"
+      @open="onMenuOpen('user')"
+      @close="onMenuClose('user')"
+    ></user-menu>
+    <channel-menu
+      ref="channelMenu"
+      @assign="onChannelAssign"
+      @create-group="onChannelCreateGroup"
+      @open="onMenuOpen('channel')"
+      @close="onMenuClose('channel')"
+    ></channel-menu>
     <recent-conversations ref="recentDialog"></recent-conversations>
     <image-preview ref="imagePreview"></image-preview>
     <add-pm-partner ref="addPmPartnerDialog"></add-pm-partner>
 
     <quick-jump ref="quickJump"></quick-jump>
+
+    <toast
+      v-for="t in toasts"
+      :key="t.id"
+      v-bind="t"
+      @dismiss="dismissToast(t.id)"
+    />
   </div>
 </template>
 
@@ -382,6 +424,7 @@
   import Vue from 'vue';
   import { Keys } from '../keys';
   import ChannelList from './ChannelList.vue';
+  import Dropdown from '../components/Dropdown.vue';
   import CharacterSearch from './CharacterSearch.vue';
   import { characterImage, getKey, profileLink } from './common';
   import ConversationView from './ConversationView.vue';
@@ -404,15 +447,27 @@
   import { Dialog } from '../helpers/dialog';
   import AdCenterDialog from './ads/AdCenter.vue';
   import AdLauncherDialog from './ads/AdLauncher.vue';
+  import ChannelGroupSection from './ChannelGroupSection.vue';
+  import ChannelMenu from './ChannelMenu.vue';
   import CustomDialog from '../components/custom_dialog';
   import Modal from '../components/Modal.vue';
   import QuickJump from './QuickJump.vue';
+  import { ipcRenderer } from 'electron';
+  import { toasts, showToast, updateToast, dismissToast } from './toast';
+  import Toast from '../components/Toast.vue';
 
   const unreadClasses = {
     [Conversation.UnreadState.None]: '',
     [Conversation.UnreadState.Mention]: 'list-group-item-warning',
     [Conversation.UnreadState.Unread]: 'list-group-item-danger'
   };
+
+  enum ContextMenuTypes {
+    User = 'user',
+    Channel = 'channel',
+    ChannelGroup = 'channelGroup',
+    Eicon = 'eicon'
+  }
 
   export default Vue.extend({
     components: {
@@ -432,7 +487,11 @@
       adCenter: AdCenterDialog,
       adLauncher: AdLauncherDialog,
       modal: Modal,
-      'quick-jump': QuickJump
+      'quick-jump': QuickJump,
+      toast: Toast,
+      'channel-group-section': ChannelGroupSection,
+      'channel-menu': ChannelMenu,
+      dropdown: Dropdown
     },
     data() {
       return {
@@ -456,10 +515,29 @@
         historyNavigateHandleBackward: undefined as any as (
           e: KeyboardEvent
         ) => boolean,
-        mouseButtonListener: undefined as any as (e: MouseEvent) => void
+        mouseButtonListener: undefined as any as (e: MouseEvent) => void,
+        autoBackupStatusListener: undefined as any as (
+          e: Electron.IpcRendererEvent,
+          status: string,
+          progress?: number
+        ) => void,
+        toasts: toasts,
+        dismissToast: dismissToast,
+        pendingRenameGroupId: null as string | null,
+        activeMenuType: 'none' as 'none' | 'user' | 'channel'
       };
     },
     computed: {
+      sortedChannelGroups(): any[] {
+        return [...core.conversations.channelGroups].sort(
+          (a, b) => a.order - b.order
+        );
+      },
+      ungroupedChannels(): any[] {
+        return core.conversations.channelConversations.filter(
+          (c: any) => !core.conversations.channelGroupAssignments[c.channel.id]
+        );
+      },
       showAvatars(): boolean {
         return core.state.settings.showAvatars;
       },
@@ -480,6 +558,40 @@
 
       this.mouseButtonListener = (e: MouseEvent) => this.onMouseButton(e);
       window.addEventListener('mouseup', this.mouseButtonListener);
+
+      this.autoBackupStatusListener = (_e, status, progress) => {
+        const id = 'auto-backup';
+        if (status === 'started') {
+          showToast({
+            id,
+            message: l('settings.autoBackup.toastInProgress'),
+            icon: 'fa-sync',
+            iconSpin: true,
+            progress: 0
+          });
+        } else if (status === 'progress' && typeof progress === 'number') {
+          updateToast(id, { progress });
+        } else if (status === 'success') {
+          updateToast(id, {
+            message: l('settings.autoBackup.toastComplete'),
+            icon: 'fa-check',
+            iconSpin: false,
+            variant: 'success',
+            progress: 1,
+            autoDismiss: 5000
+          });
+        } else if (status === 'error') {
+          updateToast(id, {
+            message: l('settings.autoBackup.toastFailed'),
+            icon: 'fa-exclamation-triangle',
+            iconSpin: false,
+            variant: 'error',
+            progress: undefined,
+            autoDismiss: 5000
+          });
+        }
+      };
+      ipcRenderer.on('auto-backup-status', this.autoBackupStatusListener);
 
       //We do this because it's a massive pain in the 🫏 to read some monstrosity of
       //an if-else statement to compare our platforms and then pick a keyboard shortcut in our keyboard handle event
@@ -521,14 +633,45 @@
           );
         }
       });
-      Sortable.create(<HTMLElement>this.$refs['channelConversations'], {
-        animation: 50,
+      Sortable.create(<HTMLElement>this.$refs['channelGroups'], {
+        group: { name: 'groups', pull: false, put: false },
+        handle: '.channel-group-header',
+        animation: 150,
         fallbackTolerance: 5,
-        onEnd: async e => {
+        onEnd: (e: Sortable.SortableEvent) => {
           if (e.oldIndex === e.newIndex) return;
-          return core.conversations.channelConversations[e.oldIndex!].sort(
-            e.newIndex!
+          const sorted = [...core.conversations.channelGroups].sort(
+            (a, b) => a.order - b.order
           );
+          const [moved] = sorted.splice(e.oldIndex!, 1);
+          sorted.splice(e.newIndex!, 0, moved);
+          sorted.forEach((g, i) => (g.order = i));
+          void core.conversations.saveChannelGroups();
+        }
+      });
+      Sortable.create(<HTMLElement>this.$refs['channelConversations'], {
+        group: { name: 'channels', pull: true, put: true },
+        sort: true,
+        animation: 150,
+        fallbackTolerance: 5,
+        onStart: () =>
+          document
+            .getElementById('conversations')
+            ?.classList.add('channel-dragging'),
+        onEnd: async (e: any) => {
+          document
+            .getElementById('conversations')
+            ?.classList.remove('channel-dragging');
+          if (e.to !== e.from || e.oldIndex === e.newIndex) return;
+          const allConvs = core.conversations.channelConversations;
+          const ungrouped = allConvs.filter(
+            (c: any) =>
+              !core.conversations.channelGroupAssignments[c.channel.id]
+          );
+          const conv = ungrouped[e.oldIndex!];
+          const targetConv = ungrouped[e.newIndex!];
+          if (!conv || !targetConv) return;
+          return conv.sort(allConvs.indexOf(targetConv));
         }
       });
       const ownCharacter = core.characters.ownCharacter;
@@ -603,6 +746,10 @@
       window.removeEventListener('focus', this.focusListener);
       window.removeEventListener('blur', this.blurListener);
       window.removeEventListener('mouseup', this.mouseButtonListener);
+      ipcRenderer.removeListener(
+        'auto-backup-status',
+        this.autoBackupStatusListener
+      );
     },
     methods: {
       onMouseButton(e: MouseEvent): void {
@@ -633,7 +780,12 @@
       onKeyDown(e: KeyboardEvent): void {
         const selected = this.conversations.selectedConversation;
         const pms = this.conversations.privateConversations;
-        const channels = this.conversations.channelConversations;
+        const channels = [
+          ...this.sortedChannelGroups.flatMap((g: any) =>
+            this.channelsInGroup(g.id)
+          ),
+          ...this.ungroupedChannels
+        ];
         const console = this.conversations.consoleTab;
         if (getKey(e) === Keys.ArrowUp) {
           if (e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
@@ -844,6 +996,13 @@
         );
       },
 
+      channelsInGroup(groupId: string): any[] {
+        return core.conversations.channelConversations.filter(
+          (c: any) =>
+            core.conversations.channelGroupAssignments[c.channel.id] === groupId
+        );
+      },
+
       logOut(): void {
         if (Dialog.confirmDialog(l('chat.confirmLeave')))
           core.connection.close();
@@ -899,8 +1058,86 @@
         (<PmPartnerAdder>this.$refs['addPmPartnerDialog']).show();
       },
 
+      onMenuOpen(menuType: 'user' | 'channel'): void {
+        this.activeMenuType = menuType;
+      },
+
+      onMenuClose(menuType: 'user' | 'channel'): void {
+        if (this.activeMenuType === menuType) {
+          this.activeMenuType = 'none';
+        }
+      },
+
       userMenuHandle(e: MouseEvent | TouchEvent): void {
-        (<UserMenu>this.$refs['userMenu']).handleEvent(e);
+        const userMenu = this.$refs['userMenu'] as any;
+        const channelMenu = this.$refs['channelMenu'] as any;
+
+        if (e.type === 'contextmenu') {
+          const channelEl = (e.target as HTMLElement).closest(
+            '[data-channel-id]'
+          );
+          if (channelEl) {
+            e.preventDefault();
+            const channelId = (channelEl as HTMLElement).dataset.channelId!;
+            const conv = core.conversations.channelConversations.find(
+              (c: any) => c.channel.id === channelId
+            );
+            if (conv) {
+              if (this.activeMenuType === 'user') {
+                userMenu.close();
+              }
+              channelMenu.handleEvent(
+                e,
+                conv,
+                core.conversations.channelGroups,
+                core.conversations.channelGroupAssignments[channelId] ?? null
+              );
+              return;
+            }
+          }
+        }
+
+        if (
+          this.activeMenuType === 'channel' &&
+          (e.type === 'contextmenu' || e.type === 'touchstart')
+        ) {
+          channelMenu.close();
+        }
+
+        userMenu.handleEvent(e);
+      },
+
+      onChannelAssign(channelId: string, groupId: string | null): void {
+        core.conversations.setChannelGroup(channelId, groupId);
+      },
+
+      addChannelGroup(): void {
+        const id = core.conversations.createChannelGroup(this.newGroupName());
+        this.pendingRenameGroupId = id;
+      },
+
+      onChannelCreateGroup(channelId: string): void {
+        const id = core.conversations.createChannelGroup(this.newGroupName());
+        core.conversations.setChannelGroup(channelId, id);
+        this.pendingRenameGroupId = id;
+      },
+
+      newGroupName(): string {
+        let newGroupNameCounter = 0;
+        while (
+          core.conversations.channelGroups.some(
+            g =>
+              (newGroupNameCounter === 0 &&
+                g.name === l('channel.group.newGroup')) ||
+              g.name ===
+                l('channel.group.newGroup.counter', newGroupNameCounter)
+          )
+        ) {
+          newGroupNameCounter++;
+        }
+        return newGroupNameCounter === 0
+          ? l('channel.group.newGroup')
+          : l('channel.group.newGroup.counter', newGroupNameCounter);
       },
 
       showQuickJump(): void {
@@ -1201,16 +1438,6 @@
       }
     }
 
-    .adControls {
-      position: absolute;
-      color: var(--bs-danger);
-      z-index: 12;
-      top: 0px;
-      &:hover {
-        color: var(--bs-danger-text-emphasis);
-      }
-    }
-
     .new-conversation,
     .join-channel {
       font-size: 90%;
@@ -1244,5 +1471,27 @@
         color: var(--yellow);
       }
     }
+  }
+
+  // Drag-to-group styles
+  // Show collapsed group lists as drop zones while dragging
+  #conversations.channel-dragging .channel-group-list {
+    display: block !important;
+    min-height: 28px;
+  }
+  #conversations.channel-dragging .channel-group-list:empty::before {
+    content: 'Drop here';
+    display: block;
+    text-align: center;
+    font-size: 0.75rem;
+    padding: 5px 0;
+    opacity: 0.5;
+  }
+  // Sortable ghost/chosen states for channels
+  .item-channel.sortable-ghost {
+    opacity: 0.4;
+  }
+  .item-channel.sortable-chosen {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   }
 </style>

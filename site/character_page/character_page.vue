@@ -778,9 +778,8 @@
   }
 
   .expanded-custom-kink {
-    .custom-kink {
-      margin-top: 14px;
-      margin-bottom: 14px;
+    &.custom-kink {
+      border: 1px var(--characterKinkCustomBorderColor) solid;
     }
   }
 
@@ -806,7 +805,7 @@
     margin-bottom: 7px;
     margin-left: -6px;
     margin-right: -6px;
-    border: 1px var(--characterKinkCustomBorderColor) solid;
+
     border-radius: 2px;
     /* border-collapse: collapse; */
     padding: 5px;

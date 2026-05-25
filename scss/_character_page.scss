@@ -3,12 +3,43 @@
   height: auto;
   max-height: 50vh;
   object-fit: contain;
+  z-index: 1;
+  position: relative;
+  &[src^='https://static.f-list.net/images/avatar/'] {
+    object-fit: scale-down;
+  }
+}
+
+.character-page-avatar-bg {
+  width: 100%;
+  position: relative;
+  overflow: visible;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: var(--character-avatar-bg);
+    background-size: cover;
+    background-position: center;
+    filter: blur(30px);
+    transform: scale(0.7);
+    z-index: 0;
+    opacity: 0.6;
+    border-radius: 100%;
+  }
 }
 
 // Inline images
 .inline-image {
   max-width: 100%;
   height: auto;
+  vertical-align: unset;
 }
 
 .character-page {
@@ -258,22 +289,26 @@
     float: left;
   }
 
+  /*
   .guestbook-contents {
     //@include well();
     &.deleted {
       //@include alert-warning();
     }
   }
+  */
 
   .guestbook-reply {
     &:before {
       content: 'Reply ';
       font-weight: bold;
     }
+    /*
     .reply-message {
       //@include well;
       //@include alert-info;
     }
+    */
   }
 }
 
@@ -348,6 +383,33 @@
       &.blurred {
         filter: blur(10px);
       }
+    }
+  }
+  .image-preview-close-outer {
+    opacity: 0;
+    transition: opacity linear 0.15s;
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 100%;
+    min-height: 20%;
+    z-index: 1501;
+
+    .btn-close.preview-close {
+      --spacing: 1rem;
+      position: fixed;
+      z-index: 1501;
+      font-size: 1.5rem;
+      right: var(--spacing);
+      top: var(--spacing);
+      border-radius: 90px;
+      opacity: 0.5;
+      &:hover {
+        opacity: 1;
+      }
+    }
+    &:hover {
+      opacity: 1;
     }
   }
   .image-preview-buttons-container {

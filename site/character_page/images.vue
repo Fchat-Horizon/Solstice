@@ -129,6 +129,12 @@
           <i class="fa-solid fa-arrow-right preview-arrow"></i>
         </div>
       </div>
+      <div class="image-preview-close-outer">
+        <button
+          class="btn btn-close preview-close"
+          @click="hidePreview()"
+        ></button>
+      </div>
       <div class="image-preview-info-outer d-flex align-items-end">
         <div
           class="image-preview-info d-flex flex-grow-1"
@@ -441,7 +447,7 @@
   const showPreview = (image: CharacterImage): void => {
     ignoreNextClick.value = false;
     setPreviewImage(image);
-    window.addEventListener('keydown', handleKeydown);
+    window.addEventListener('keydown', handleKeydown, { capture: true });
     window.addEventListener('resize', updatePreviewDimensions);
     browseTimeOut();
   };
@@ -498,7 +504,7 @@
     previewDisplayHeight.value = 0;
     stopPreviewPan(true);
     ignoreNextClick.value = false;
-    window.removeEventListener('keydown', handleKeydown);
+    window.removeEventListener('keydown', handleKeydown, { capture: true });
     window.removeEventListener('resize', updatePreviewDimensions);
     zoomLevel.value = ZOOM_LEVEL_MIN;
   };
@@ -625,6 +631,8 @@
 
     if (key === Keys.Escape) {
       hidePreview();
+      e.stopImmediatePropagation();
+      e.preventDefault();
     } else if (key === Keys.ArrowLeft) {
       previewPrev();
       e.preventDefault();
