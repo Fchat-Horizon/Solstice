@@ -64,12 +64,12 @@
     getStaffAlias,
     getStaffRole,
     getSupporterAlias,
-    isSolsticeContributor,
-    isSolsticeTranslator,
-    isSolsticeDev,
-    isSolsticeSponsor,
-    isSolsticeStaff,
-    isSolsticeSupporter
+    isHorizonContributor,
+    isHorizonTranslator,
+    isHorizonDev,
+    isHorizonSponsor,
+    isHorizonStaff,
+    isHorizonSupporter
   } from './profile_api';
   import { CharacterColor } from './../fchat/characters';
 
@@ -172,7 +172,7 @@
 
     // Check for dev badge
     if (
-      isSolsticeDev(character.name) &&
+      isHorizonDev(character.name) &&
       core.state.settings.horizonShowDeveloperBadges
     ) {
       devIcon = 'fa fa-wrench';
@@ -181,7 +181,7 @@
     // Check for contributor badge
     let contributorIcon: string | null = null;
     if (
-      isSolsticeContributor(character.name) &&
+      isHorizonContributor(character.name) &&
       core.state.settings.horizonShowDeveloperBadges
     ) {
       contributorIcon = 'fa fa-code';
@@ -189,7 +189,7 @@
 
     let translatorIcon: string | null = null;
     if (
-      isSolsticeTranslator(character.name) &&
+      isHorizonTranslator(character.name) &&
       core.state.settings.horizonShowDeveloperBadges
     ) {
       translatorIcon = 'fa fa-language';
@@ -201,21 +201,21 @@
 
     // should likely change this icon later, lets get the pr out first
     if (
-      isSolsticeStaff(character.name) &&
+      isHorizonStaff(character.name) &&
       core.state.settings.horizonShowDeveloperBadges
     ) {
       staffIcon = 'fa fa-id-badge';
     }
 
     if (
-      isSolsticeSupporter(character.name) &&
+      isHorizonSupporter(character.name) &&
       core.state.settings.horizonShowDeveloperBadges
     ) {
       supporterIcon = 'fa fa-handshake';
     }
 
     if (
-      isSolsticeSponsor(character.name) &&
+      isHorizonSponsor(character.name) &&
       core.state.settings.horizonShowDeveloperBadges
     ) {
       sponsorIcon = 'fa fa-cookie';

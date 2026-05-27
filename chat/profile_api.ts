@@ -39,90 +39,90 @@ import * as Utils from '../site/utils';
 import core from './core';
 import { EventBus } from './preview/event-bus';
 
-let solsticeDevs: string[] = [];
-let solsticeContributors: Map<string, string | undefined> = new Map();
+let horizonDevs: string[] = [];
+let horizonContributors: Map<string, string | undefined> = new Map();
 type TranslatorDetails = {
   alias?: string;
   languages?: string[];
 };
-let solsticeTranslators: Map<string, TranslatorDetails> = new Map();
-let solsticeStaff: Map<string, { alias: string; role?: string }> = new Map();
-let solsticeSupporters: Map<string, string | undefined> = new Map();
-let solsticeSponsors: Map<string, string | undefined> = new Map();
+let horizonTranslators: Map<string, TranslatorDetails> = new Map();
+let horizonStaff: Map<string, { alias: string; role?: string }> = new Map();
+let horizonSupporters: Map<string, string | undefined> = new Map();
+let horizonSponsors: Map<string, string | undefined> = new Map();
 
-export function isSolsticeDev(characterName: string): boolean {
-  return solsticeDevs.includes(characterName);
+export function isHorizonDev(characterName: string): boolean {
+  return horizonDevs.includes(characterName);
 }
 
-export function isSolsticeContributor(characterName: string): boolean {
-  return solsticeContributors.has(characterName);
+export function isHorizonContributor(characterName: string): boolean {
+  return horizonContributors.has(characterName);
 }
 
 export function getContributorAlias(characterName: string): string | undefined {
-  return solsticeContributors.get(characterName);
+  return horizonContributors.get(characterName);
 }
 
-export function isSolsticeTranslator(characterName: string): boolean {
-  return solsticeTranslators.has(characterName);
+export function isHorizonTranslator(characterName: string): boolean {
+  return horizonTranslators.has(characterName);
 }
 
 export function getTranslatorAlias(characterName: string): string | undefined {
-  return solsticeTranslators.get(characterName)?.alias;
+  return horizonTranslators.get(characterName)?.alias;
 }
 
 export function getTranslatorLanguages(
   characterName: string
 ): ReadonlyArray<string> {
-  return solsticeTranslators.get(characterName)?.languages || [];
+  return horizonTranslators.get(characterName)?.languages || [];
 }
 
-export function isSolsticeStaff(characterName: string): boolean {
-  return solsticeStaff.has(characterName);
+export function isHorizonStaff(characterName: string): boolean {
+  return horizonStaff.has(characterName);
 }
 
 export function getStaffRole(characterName: string): string | undefined {
-  return solsticeStaff.get(characterName)?.role;
+  return horizonStaff.get(characterName)?.role;
 }
 
 export function getStaffAlias(characterName: string): string | undefined {
-  return solsticeStaff.get(characterName)?.alias;
+  return horizonStaff.get(characterName)?.alias;
 }
 
-export function isSolsticeSupporter(characterName: string): boolean {
-  return solsticeSupporters.has(characterName);
+export function isHorizonSupporter(characterName: string): boolean {
+  return horizonSupporters.has(characterName);
 }
 
 export function getSupporterAlias(characterName: string): string | undefined {
-  return solsticeSupporters.get(characterName);
+  return horizonSupporters.get(characterName);
 }
 
-export function isSolsticeSponsor(characterName: string): boolean {
-  return solsticeSponsors.has(characterName);
+export function isHorizonSponsor(characterName: string): boolean {
+  return horizonSponsors.has(characterName);
 }
 
 export function getSponsorAlias(characterName: string): string | undefined {
-  return solsticeSponsors.get(characterName);
+  return horizonSponsors.get(characterName);
 }
 
 export async function preloadTeamData(): Promise<void> {
   try {
     const applyTeamData = (data: any): void => {
-      solsticeDevs = data.devs?.maintainers || [];
+      horizonDevs = data.devs?.maintainers || [];
 
       // Load contributors
-      solsticeContributors = new Map();
+      horizonContributors = new Map();
       if (data.devs?.contributors) {
         for (const key in data.devs.contributors) {
           const contributor = data.devs.contributors[key];
           if (!contributor.characters) continue;
           for (const charName of contributor.characters) {
-            solsticeContributors.set(charName, contributor.alias || undefined);
+            horizonContributors.set(charName, contributor.alias || undefined);
           }
         }
       }
 
       // Load translators
-      solsticeTranslators = new Map();
+      horizonTranslators = new Map();
       if (data.devs?.translators) {
         for (const key in data.devs.translators) {
           const translator = data.devs.translators[key];
@@ -147,13 +147,13 @@ export async function preloadTeamData(): Promise<void> {
           }
 
           for (const charName of translator.characters) {
-            solsticeTranslators.set(charName, { alias, languages });
+            horizonTranslators.set(charName, { alias, languages });
           }
         }
       }
 
       // Load staff
-      solsticeStaff = new Map();
+      horizonStaff = new Map();
       if (data.devs?.staff) {
         for (const key in data.devs.staff) {
           const staff = data.devs.staff[key];
@@ -171,31 +171,31 @@ export async function preloadTeamData(): Promise<void> {
                 : undefined;
 
           for (const charName of staff.characters) {
-            solsticeStaff.set(charName, { alias: staff.alias, role });
+            horizonStaff.set(charName, { alias: staff.alias, role });
           }
         }
       }
 
       // Load supporters
-      solsticeSupporters = new Map();
+      horizonSupporters = new Map();
       if (data.devs?.supporters) {
         for (const key in data.devs.supporters) {
           const supporter = data.devs.supporters[key];
           if (!supporter.characters) continue;
           for (const charName of supporter.characters) {
-            solsticeSupporters.set(charName, supporter.alias || undefined);
+            horizonSupporters.set(charName, supporter.alias || undefined);
           }
         }
       }
 
       // Load sponsors
-      solsticeSponsors = new Map();
+      horizonSponsors = new Map();
       if (data.devs?.sponsors) {
         for (const key in data.devs.sponsors) {
           const sponsor = data.devs.sponsors[key];
           if (!sponsor.characters) continue;
           for (const charName of sponsor.characters) {
-            solsticeSponsors.set(charName, sponsor.alias || undefined);
+            horizonSponsors.set(charName, sponsor.alias || undefined);
           }
         }
       }
@@ -311,7 +311,7 @@ async function executeCharacterData(
   // Add maintainer badge for Horizon developers
   const badges = [...data.badges];
   if (
-    isSolsticeDev(data.name) &&
+    isHorizonDev(data.name) &&
     core.state.settings.horizonShowDeveloperBadges
   ) {
     if (!badges.includes('maintainer')) {
@@ -320,7 +320,7 @@ async function executeCharacterData(
   }
 
   if (
-    isSolsticeContributor(data.name) &&
+    isHorizonContributor(data.name) &&
     core.state.settings.horizonShowDeveloperBadges
   ) {
     if (!badges.includes('contributor')) {
@@ -329,7 +329,7 @@ async function executeCharacterData(
   }
 
   if (
-    isSolsticeTranslator(data.name) &&
+    isHorizonTranslator(data.name) &&
     core.state.settings.horizonShowDeveloperBadges
   ) {
     if (!badges.includes('horizon-translator')) {
@@ -339,21 +339,21 @@ async function executeCharacterData(
 
   // Add Horizon staff/supporter/sponsor badges
   if (
-    isSolsticeStaff(data.name) &&
+    isHorizonStaff(data.name) &&
     core.state.settings.horizonShowDeveloperBadges
   ) {
     if (!badges.includes('horizon-staff')) badges.push('horizon-staff');
   }
 
   if (
-    isSolsticeSupporter(data.name) &&
+    isHorizonSupporter(data.name) &&
     core.state.settings.horizonShowDeveloperBadges
   ) {
     if (!badges.includes('horizon-supporter')) badges.push('horizon-supporter');
   }
 
   if (
-    isSolsticeSponsor(data.name) &&
+    isHorizonSponsor(data.name) &&
     core.state.settings.horizonShowDeveloperBadges
   ) {
     if (!badges.includes('horizon-sponsor')) badges.push('horizon-sponsor');
