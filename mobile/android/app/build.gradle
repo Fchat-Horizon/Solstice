@@ -14,13 +14,9 @@ android {
     }
     flavorDimensions "brand"
     productFlavors {
-        fchat {
+        solstice {
             dimension "brand"
-            applicationId "net.f_list.fchat"
-        }
-        horizon {
-            dimension "brand"
-            applicationId "net.f_list.horizon"
+            applicationId "net.f_list.solstice"
         }
     }
     buildTypes {
