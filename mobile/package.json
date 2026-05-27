@@ -1,8 +1,8 @@
 {
-  "name": "horizon-mobile",
+  "name": "solstice-mobile",
   "version": "2.1.1",
-  "displayName": "Horizon",
-  "author": "The F-List Team and Horizon Contributors",
+  "displayName": "Solstice",
+  "author": "The F-List Team and Solstice Contributors",
   "description": "F-List.net Chat Client - Android",
   "main": "main.js",
   "license": "MPL-2.0",

@@ -285,7 +285,7 @@ export async function runExport(vm: ExporterVm): Promise<void> {
 
   try {
     const saveResult = await remote.dialog.showSaveDialog({
-      title: 'Save Horizon Export', // TODO: localize
+      title: 'Save Solstice Export', // TODO: localize
       defaultPath: getExportDefaultPath(),
       filters: [{ name: 'ZIP archives', extensions: ['zip'] }]
     });

@@ -1,7 +1,7 @@
 {
   "name": "Oxygen",
   "version": "1.0.0",
-  "description": "The Oxygen sound theme for Horizon",
+  "description": "The Oxygen sound theme for Solstice",
   "author": "The KDE Team",
   "sounds": {
     "attention": "sounds/Oxygen-Im-Irc-Event",

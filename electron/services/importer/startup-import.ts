@@ -15,7 +15,7 @@ type ImporterHint = 'auto' | 'vanilla' | 'advanced' | 'slimcat' | undefined;
  * @param logDirectory - Path to the Horizon log directory
  * @returns true if logs exist, false otherwise
  */
-function hasExistingHorizonLogs(logDirectory: string): boolean {
+function hasExistingSolsticeLogs(logDirectory: string): boolean {
   try {
     if (!fs.existsSync(logDirectory)) return false;
     const entries = fs.readdirSync(logDirectory, { withFileTypes: true });
@@ -159,7 +159,7 @@ export async function handleStartupImport(
     if (
       finalHint === 'vanilla' &&
       (settings.hasDismissedVanillaImport ||
-        hasExistingHorizonLogs(settings.logDirectory))
+        hasExistingSolsticeLogs(settings.logDirectory))
     )
       return settings;
 

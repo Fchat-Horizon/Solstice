@@ -608,7 +608,7 @@ try {
 log.debug('init.chat.core');
 
 const connection = new Connection(
-  `Horizon (${process.platform})`,
+  `Solstice (${process.platform})`,
   remote.app.getVersion(),
   Socket
 );

@@ -1125,7 +1125,7 @@ export async function testSmartFilterForPrivateMessage(
             'Sorry, the player of this character is not interested in characters matching your profile.' +
             `${core.state.settings.risingFilter.hidePrivateMessages ? ' They did not see your message. To bypass this warning, send your message again.' : ''}\n` +
             '\n' +
-            '✨ Need a filter for yourself? Try out [url=https://horizn.moe/]F-Chat Horizon[/url]'
+            '✨ Need a filter for yourself? Try out [url=https://horizn.moe/]F-Chat Solstice[/url]'
         };
 
         core.connection.send('PRI', message);

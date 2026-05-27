@@ -35,9 +35,9 @@
             <div class="about-container d-flex flex-column align-items-center">
               <div class="image-container">
                 <div class="image-bg"></div>
-                <img class="about-logo" :src="logoSrc" alt="Horizon logo" />
+                <img class="about-logo" :src="logoSrc" alt="Solstice logo" />
               </div>
-              <h1 class="h5 fw-semibold mb-1 text-body">Horizon</h1>
+              <h1 class="h5 fw-semibold mb-1 text-body">Solstice</h1>
               <p class="text-muted mb-2">
                 A modern, community-driven F-Chat client
               </p>
@@ -175,7 +175,7 @@
                 <a href="https://github.com/FatCatClient" target="_blank"
                   >FatCatClient</a
                 >. <br />
-                Thank you for using Horizon!
+                Thank you for using Solstice!
               </p>
             </div>
 

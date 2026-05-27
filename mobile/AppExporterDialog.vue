@@ -192,7 +192,7 @@
                                 vm.importIncludeCharacterSettings = vm.importCharacterSettingsAvailable;
                                 vm.importIncludeLogs = vm.importLogsAvailable;
                             } catch {
-                                vm.importZipError = "We couldn't read that export. Please choose a Horizon export created by this app.";
+                                vm.importZipError = "We couldn't read that export. Please choose a Solstice export created by this app.";
                             }
                         };
                         const input = document.createElement('input');

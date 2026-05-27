@@ -1,7 +1,7 @@
 {
   "name": "Ocean",
   "version": "1.0.0",
-  "description": "The Ocean sound theme for Horizon",
+  "description": "The Ocean sound theme for Solstice",
   "author": "The KDE Team",
   "sounds": {
     "attention": "Sounds/NewMessage",

@@ -89,11 +89,11 @@ async function tryHandleCli(): Promise<boolean> {
 
   if (command === 'help' || has('--help') || has('-h')) {
     console.log(`
-Horizon - CLI Usage
+Solstice - CLI Usage
 
 USAGE:
-  horizon <command> [flags]
-  horizon [flags]              Start GUI (with optional flags)
+  solstice <command> [flags]
+  solstice [flags]              Start GUI (with optional flags)
 
 COMMANDS:
   export                  Export user data to a ZIP archive
@@ -105,7 +105,7 @@ GUI FLAGS:
 
 EXPORT FLAGS:
   --data-dir <path>       Data directory (default: userData/data)
-  --out <path>            Output ZIP file path (default: ./horizon-export.zip)
+  --out <path>            Output ZIP file path (default: ./solstice-export.zip)
   --characters <list>     Comma-separated list of characters to export (default: all)
   -n, --dry-run           Perform a dry run without creating the actual export
   --include-general       Include general settings (default: true)
@@ -335,7 +335,10 @@ async function checkForGitRelease(
         continue;
       }
       if (release.tag_name == semVer) {
-        log.info('updateCheck.state.upToDate', `Horizon up to date: ${semVer}`);
+        log.info(
+          'updateCheck.state.upToDate',
+          `Solstice up to date: ${semVer}`
+        );
         return;
       }
       log.info(

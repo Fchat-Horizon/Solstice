@@ -1,14 +1,14 @@
 {
-  "name": "horizon-electron",
+  "name": "solstice-electron",
   "version": "2.2.0-beta.1",
-  "author": "The F-List Team and Horizon Contributors",
-  "description": "Horizon",
+  "author": "The F-List Team and Solstice Contributors",
+  "description": "Solstice",
   "homepage": "https://horizn.moe",
   "main": "main.js",
   "license": "MPL-2.0",
   "build": {
     "appId": "net.flist.fchat",
-    "productName": "Horizon",
+    "productName": "Solstice",
     "artifactName": "F-Chat.${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "app": "app",
@@ -32,7 +32,7 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Horizon"
+      "shortcutName": "Solstice"
     },
     "mac": {
       "icon": "build/icon.icon",
@@ -62,15 +62,15 @@
     },
     "linux": {
       "icon": "build/icon.png",
-      "maintainer": "The Horizon Maintainers",
-      "executableName": "horizon-electron",
+      "maintainer": "The Solstice Maintainers",
+      "executableName": "solstice-electron",
       "desktop": {
         "entry": {
-          "Name": "Horizon",
-          "Comment": "The F-Chat Horizon Client",
+          "Name": "Solstice",
+          "Comment": "The F-Chat Solstice Client",
           "Terminal": "false",
           "Type": "Application",
-          "StartupWMClass": "Horizon",
+          "StartupWMClass": "Solstice",
           "Categories": "Network;Chat;"
         }
       }

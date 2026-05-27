@@ -1,5 +1,5 @@
 {
-  "name": "fchat-horizon",
+  "name": "fchat-solstice",
   "version": "2.2.0-beta.1",
   "author": "The F-List Team and Horizon Contributors",
   "description": "A heavily modded FChat 3.0 client for F-List, continued from Rising",
@@ -82,17 +82,17 @@
   },
   "scripts": {
     "__removed__postinstall": "electron-rebuild --prebuild-tag-prefix=ignoreprebuilds -f -o keytar",
-    "build": "pnpm --filter horizon-electron build",
-    "build:dist": "pnpm --filter horizon-electron build:dist",
-    "watch": "pnpm --filter horizon-electron watch",
-    "start": "pnpm --filter horizon-electron start",
-    "build:mobile": "pnpm --filter horizon-mobile build",
-    "build:mobile:dist": "pnpm --filter horizon-mobile build:dist",
-    "watch:mobile": "pnpm --filter horizon-mobile watch",
+    "build": "pnpm --filter solstice-electron build",
+    "build:dist": "pnpm --filter solstice-electron build:dist",
+    "watch": "pnpm --filter solstice-electron watch",
+    "start": "pnpm --filter solstice-electron start",
+    "build:mobile": "pnpm --filter solstice-mobile build",
+    "build:mobile:dist": "pnpm --filter solstice-mobile build:dist",
+    "watch:mobile": "pnpm --filter solstice-mobile watch",
     "release": "release-it",
     "lint": "pnpm prettier --write .",
     "check": "pnpm prettier --check .",
-    "typecheck": "pnpm --filter horizon-electron typecheck",
+    "typecheck": "pnpm --filter solstice-electron typecheck",
     "prepare": "husky"
   },
   "pnpm": {

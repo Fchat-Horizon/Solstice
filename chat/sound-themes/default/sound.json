@@ -1,8 +1,8 @@
 {
   "name": "Default",
   "version": "1.0.0",
-  "description": "The default sound theme for F-Chat Horizon",
-  "author": "F-Chat Horizon",
+  "description": "The default sound theme for F-Chat Solstice",
+  "author": "F-Chat Solstice",
   "sounds": {
     "attention": "sounds/attention",
     "chat": "sounds/chat",
