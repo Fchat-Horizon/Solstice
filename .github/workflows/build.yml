@@ -1,42 +1,26 @@
-# ! Build & Create Draft Release workflow
 name: Build & Create Draft Release
 
-# * Set the required permissions for the workflow
 permissions:
   contents: write
 
-# * Trigger the workflow when a tag matching 'v[0-9]*' is pushed
 on:
   push:
     tags:
       - 'v[0-9]*'
 
 jobs:
-  # function: Extract release version from the tag
-  set-version:
+  build-and-release:
+    name: Build & Release Android APK
     runs-on: ubuntu-latest
-    outputs:
-      release_version: ${{ steps.get_version.outputs.release_version }}
     steps:
       - name: Extract Release Version from Tag
         id: get_version
         run: |
-          # * Get version number from the tag
           version="${GITHUB_REF#refs/tags/}"
           echo "release_version=${version}" >> $GITHUB_OUTPUT
 
-  build:
-    name: Build
-    needs: set-version
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-26, windows-latest]
-    env:
-      RELEASE_VERSION: ${{ needs.set-version.outputs.release_version }}
-    steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -44,68 +28,61 @@ jobs:
         uses: pnpm/action-setup@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: 'pnpm'
 
-      - name: Run Build Script (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          # ! Execute Linux build script
-          chmod +x electron/release-scripts/linux.sh
-          electron/release-scripts/linux.sh "$RELEASE_VERSION" "$GITHUB_WORKSPACE/release_artifacts/linux/$RELEASE_VERSION"
+      - name: Install dependencies
+        run: pnpm install
 
-      - name: Run Build Script (macOS)
-        if: matrix.os == 'macos-26'
-        run: |
-          # ! Execute macOS build script
-          chmod +x electron/release-scripts/macos.sh
-          electron/release-scripts/macos.sh "$RELEASE_VERSION" "$GITHUB_WORKSPACE/release_artifacts/macos/$RELEASE_VERSION"
+      - name: Build web assets
+        run: pnpm --filter solstice-mobile build:dist
 
-      - name: Run Build Script (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          # ! Execute Windows build script
-          .\electron\release-scripts\windows.ps1 -ReleaseVersion "$env:RELEASE_VERSION" -ReleasePath "$env:GITHUB_WORKSPACE\release_artifacts\windows\$env:RELEASE_VERSION"
-
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          name: ${{ matrix.os }}-artifacts
-          path: release_artifacts/**
-          # note: Uploads artifacts for the current operating system
+          java-version: '17'
+          distribution: 'temurin'
 
-  release:
-    name: Create Release
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release_artifacts
-          # * Downloads all artifacts from the build job
+      - name: Decode signing keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > $GITHUB_WORKSPACE/release.keystore
+
+      - name: Build release APKs
+        working-directory: mobile/android
+        env:
+          STORE_FILE: ${{ github.workspace }}/release.keystore
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file="$STORE_FILE" \
+            -Pandroid.injected.signing.store.password="$STORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      - name: Collect and rename APKs
+        env:
+          RELEASE_VERSION: ${{ steps.get_version.outputs.release_version }}
+        run: |
+          mkdir -p release_artifacts
+          for apk in mobile/android/app/build/outputs/apk/*/release/*.apk; do
+            flavor=$(echo "$apk" | grep -oP '(?<=apk/)\w+(?=/release)')
+            cp "$apk" "release_artifacts/solstice-${RELEASE_VERSION}-${flavor}.apk"
+          done
 
       - name: Generate SHA256 Checksums
         run: |
-          mkdir -p final_release
-
-          cp -r release_artifacts/*-artifacts/* final_release/
-
-          cd final_release
-
+          cd release_artifacts
           find . -type f -not -name "SHASUMS256.txt" -exec sha256sum {} \; | sort > SHASUMS256.txt
-
-          cat SHASUMS256.txt
 
       - name: Detect release type
         id: release_type
         run: |
           TAG="${{ github.ref_name }}"
           if [[ "$TAG" == *"-dev."* ]]; then
-            # Dev builds publish automatically — no human gate needed
             echo "draft=false" >> $GITHUB_OUTPUT
             echo "prerelease=true" >> $GITHUB_OUTPUT
           elif [[ "$TAG" == *"-beta."* ]]; then
@@ -123,6 +100,6 @@ jobs:
           name: Release ${{ github.ref_name }}
           draft: ${{ steps.release_type.outputs.draft }}
           prerelease: ${{ steps.release_type.outputs.prerelease }}
-          files: final_release/**/*
+          files: release_artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
