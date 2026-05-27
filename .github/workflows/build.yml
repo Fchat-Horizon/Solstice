@@ -47,7 +47,7 @@ jobs:
 
       - name: Decode signing keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\n\r ' | base64 --decode > $GITHUB_WORKSPACE/release.keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode --ignore-garbage > $GITHUB_WORKSPACE/release.keystore
 
       - name: Build release APKs
         working-directory: mobile/android
