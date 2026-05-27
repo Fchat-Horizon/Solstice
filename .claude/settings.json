@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git remote *)",
+      "Bash(git -C /home/kanna/Documents/Code/Horizon/chat remote -v)",
+      "Bash(git -C /home/kanna/Documents/Code/Horizon/chat log --oneline -3)",
+      "Bash(git -C /home/kanna/Documents/Code/Horizon log --oneline -5)",
+      "Bash(git -C /home/kanna/Documents/Code/Horizon log --oneline)",
+      "Bash(pnpm typecheck *)",
+      "Bash(./gradlew installHorizonDebug)",
+      "Bash(grep -n 'sidebarExpanded\\\\|$refs\\\\['\\\\''sidebar'\\\\''\\\\]\\\\|this\\\\.sidebar' /home/kanna/Documents/Code/Horizon-Mobile/chat/ChatView.vue)",
+      "Bash(grep -rn 'sidebarExpanded\\\\|$refs\\\\[.sidebar.\\\\]' /home/kanna/Documents/Code/Horizon-Mobile/)",
+      "Bash(grep -n 'backbutton\\\\|confirmBack\\\\|back.button\\\\|back-button\\\\|$refs\\\\['\\\\''chat'\\\\''\\\\]\\\\|$refs.chat' /home/kanna/Documents/Code/Horizon-Mobile/mobile/Index.vue)",
+      "Bash(grep -n 'chatView\\\\|ChatView\\\\|$refs\\\\[.chatView.\\\\]\\\\|$refs.chatView\\\\|ref=.chatView' /home/kanna/Documents/Code/Horizon-Mobile/chat/Chat.vue)",
+      "Bash(grep -n 'open\\\\|expanded\\\\|emit\\\\|$refs' /home/kanna/Documents/Code/Horizon-Mobile/chat/Sidebar.vue)",
+      "Bash(grep -n '\\\\.open\\\\|:open\\\\|\\\\.expanded\\\\|$refs\\\\[.sidebar.\\\\]\\\\|$refs\\\\.sidebar' /home/kanna/Documents/Code/Horizon-Mobile/chat/ChatView.vue)",
+      "Bash(xargs -I{} sh -c 'echo \"=== {} ===\" && git show {}:mobile/Index.vue 2>/dev/null | grep -n \"safe-area\"')"
+    ]
+  }
+}

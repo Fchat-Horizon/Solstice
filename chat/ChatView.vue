@@ -7,7 +7,7 @@
     @touchstart.passive="userMenuHandle"
     @touchend="userMenuHandle"
   >
-    <sidebar id="sidebar" :label="l('chat.menu')" icon="fa-bars">
+    <sidebar id="sidebar" ref="sidebar" :label="l('chat.menu')" icon="fa-bars">
       <div id="sidebarUserInfo">
         <div
           style="min-height: 65px; overflow: auto"
@@ -524,7 +524,11 @@
         toasts: toasts,
         dismissToast: dismissToast,
         pendingRenameGroupId: null as string | null,
-        activeMenuType: 'none' as 'none' | 'user' | 'channel'
+        activeMenuType: 'none' as 'none' | 'user' | 'channel',
+        channelLongPressTimer: null as ReturnType<typeof setTimeout> | null,
+        channelLongPressFired: false,
+        pmLongPressTimer: null as ReturnType<typeof setTimeout> | null,
+        pmLongPressFired: false
       };
     },
     computed: {
@@ -1094,6 +1098,86 @@
               );
               return;
             }
+          }
+        }
+
+        if (e.type === 'touchstart') {
+          const te = e as TouchEvent;
+          if (te.touches.length === 1) {
+            const touch = te.touches[0];
+            const channelEl = (touch.target as HTMLElement).closest(
+              '[data-channel-id]'
+            );
+            if (channelEl) {
+              if (this.activeMenuType === 'channel') channelMenu.close();
+              const x = touch.clientX;
+              const y = touch.clientY;
+              this.channelLongPressTimer = setTimeout(() => {
+                this.channelLongPressTimer = null;
+                this.channelLongPressFired = true;
+                const channelId = (channelEl as HTMLElement).dataset.channelId!;
+                const conv = core.conversations.channelConversations.find(
+                  (c: any) => c.channel.id === channelId
+                );
+                if (conv) {
+                  if (this.activeMenuType === 'user') userMenu.close();
+                  channelMenu.handleEvent(
+                    { clientX: x, clientY: y } as MouseEvent,
+                    conv,
+                    core.conversations.channelGroups,
+                    core.conversations.channelGroupAssignments[channelId] ??
+                      null
+                  );
+                }
+              }, 500);
+              return;
+            }
+
+            const pmEl = (touch.target as HTMLElement).closest(
+              'a.item-private[data-character]'
+            );
+            if (pmEl) {
+              if (this.activeMenuType === 'user') userMenu.close();
+              const x = touch.clientX;
+              const y = touch.clientY;
+              this.pmLongPressTimer = setTimeout(() => {
+                this.pmLongPressTimer = null;
+                this.pmLongPressFired = true;
+                const charName = (pmEl as HTMLElement).dataset.character!;
+                const character = core.characters.get(charName);
+                if (character) {
+                  void (userMenu as any).openMenu(
+                    { clientX: x, clientY: y } as MouseEvent,
+                    character,
+                    undefined,
+                    undefined
+                  );
+                }
+              }, 500);
+              return;
+            }
+          }
+        }
+
+        if (e.type === 'touchend') {
+          if (this.channelLongPressTimer !== null) {
+            clearTimeout(this.channelLongPressTimer);
+            this.channelLongPressTimer = null;
+          }
+          if (this.channelLongPressFired) {
+            this.channelLongPressFired = false;
+            e.preventDefault();
+            return;
+          }
+
+          if (this.pmLongPressTimer !== null) {
+            clearTimeout(this.pmLongPressTimer);
+            this.pmLongPressTimer = null;
+          }
+          if (this.pmLongPressFired) {
+            this.pmLongPressFired = false;
+            e.preventDefault();
+            return;
           }
         }
 

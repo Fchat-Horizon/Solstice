@@ -8,6 +8,64 @@
         return zip.getEntries().some((e: any) => !e.isDirectory && (e.entryName as string).startsWith('characters/'));
     }
 
+    function isPCJsonLogs(zip: AdmZip): boolean {
+        const entry = zip.getEntry('manifest.json');
+        if (!entry) return false;
+        try {
+            const m = JSON.parse(entry.getData().toString('utf8'));
+            return m?.includes?.jsonLogs === true;
+        } catch { return false; }
+    }
+
+    function jsonLogToBinary(messages: Array<{time: number; type: number; sender: string; text: string}>): Buffer {
+        const enc = new TextEncoder();
+        const parts: Uint8Array[] = [];
+        for (const msg of messages) {
+            const senderB = enc.encode(msg.sender);
+            const textB = enc.encode(msg.text);
+            const msgLen = 8 + senderB.length + textB.length;
+            const buf = new Uint8Array(msgLen + 2);
+            const v = new DataView(buf.buffer);
+            v.setUint32(0, msg.time, true);
+            v.setUint8(4, msg.type);
+            v.setUint8(5, senderB.length);
+            buf.set(senderB, 6);
+            v.setUint16(6 + senderB.length, textB.length, true);
+            buf.set(textB, 8 + senderB.length);
+            v.setUint16(msgLen, msgLen, true);
+            parts.push(buf);
+        }
+        const total = parts.reduce((s, p) => s + p.length, 0);
+        const out = Buffer.allocUnsafe(total);
+        let off = 0;
+        for (const p of parts) { out.set(p, off); off += p.length; }
+        return out;
+    }
+
+    function buildLogIndex(name: string, messages: Array<{time: number; sender: string; text: string}>): Buffer {
+        const enc = new TextEncoder();
+        const nameB = enc.encode(name);
+        const dayEntries: Array<{day: number; offset: number}> = [];
+        let pos = 0;
+        let lastDay = -1;
+        for (const msg of messages) {
+            const day = Math.floor(msg.time / 86400);
+            if (day !== lastDay) { dayEntries.push({ day, offset: pos }); lastDay = day; }
+            pos += 10 + enc.encode(msg.sender).length + enc.encode(msg.text).length;
+        }
+        const idxBuf = Buffer.allocUnsafe(1 + nameB.length + dayEntries.length * 7);
+        idxBuf[0] = nameB.length;
+        idxBuf.set(nameB, 1);
+        let ip = 1 + nameB.length;
+        for (const e of dayEntries) {
+            idxBuf.writeInt16LE(e.day, ip);
+            idxBuf.writeUInt32LE(e.offset >>> 0, ip + 2);
+            idxBuf[ip + 6] = Math.floor(e.offset / 0x100000000) & 0xFF;
+            ip += 7;
+        }
+        return idxBuf;
+    }
+
     export default Vue.extend({
         data() { return { container: null as HTMLElement | null }; },
         methods: {
@@ -164,6 +222,7 @@
                             );
                             const ensured = new Set<string>();
                             const pcFormat = isPCFormat(zip);
+                            const pcJsonLogs = pcFormat && isPCJsonLogs(zip);
 
                             const ensureDir = (path: string) => {
                                 if (!ensured.has(path)) { NativeFile.ensureDirectory(path); ensured.add(path); }
@@ -192,7 +251,20 @@
                                         if (!vm.importIncludeLogs) continue;
                                         ensureDir(charName);
                                         ensureDir(`${charName}/logs`);
-                                        try { await NativeFile.writeBytes(`${charName}/logs/${rest}`, entry.getData().toString('base64')); } catch { /* skip */ }
+                                        if (pcJsonLogs && rest.endsWith('.json')) {
+                                            const key = rest.slice(0, -5);
+                                            try {
+                                                const messages = JSON.parse(entry.getData().toString('utf8'));
+                                                if (Array.isArray(messages) && messages.length > 0) {
+                                                    const bin = jsonLogToBinary(messages);
+                                                    const idx = buildLogIndex(key, messages);
+                                                    await NativeFile.writeBytes(`${charName}/logs/${key}`, bin.toString('base64'));
+                                                    await NativeFile.writeBytes(`${charName}/logs/${key}.idx`, idx.toString('base64'));
+                                                }
+                                            } catch { /* skip corrupt entries */ }
+                                        } else {
+                                            try { await NativeFile.writeBytes(`${charName}/logs/${rest}`, entry.getData().toString('base64')); } catch { /* skip */ }
+                                        }
                                     } else if (category === 'settings') {
                                         if (!vm.importIncludeCharacterSettings) continue;
                                         ensureDir(charName);

@@ -344,6 +344,7 @@
       },
       close(): void {
         if (!this.showContextMenu) return;
+        document.removeEventListener('click', this.close);
         this.showContextMenu = false;
         this.$emit('close');
       },
@@ -537,6 +538,12 @@
         channel: Channel | undefined,
         displayName?: string
       ): Promise<void> {
+        document.removeEventListener('click', this.close);
+        setTimeout(
+          () => document.addEventListener('click', this.close, { once: true }),
+          0
+        );
+
         this.channel = channel;
         this.character = character;
         this.displayName = displayName;
@@ -582,8 +589,6 @@
           )
             this.position.top = `${window.innerHeight - menu.offsetHeight - 1}px`;
         });
-
-        document.addEventListener('click', this.close, { once: true });
       }
     }
   });

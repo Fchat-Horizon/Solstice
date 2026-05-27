@@ -456,7 +456,7 @@
         </ul>
         <div
           class="btn btn-sm btn-primary"
-          v-show="!settings.enterSend || isMobilePlatform"
+          v-show="!settings.enterSend"
           @click="sendButton"
         >
           {{ l('chat.send') }}
@@ -606,9 +606,6 @@
       };
     },
     computed: {
-      isMobilePlatform(): boolean {
-        return document.documentElement.dataset.mobilePlatform === 'true';
-      },
       conversation(): Conversation {
         return core.conversations.selectedConversation;
       },

@@ -87,10 +87,6 @@
         };
     }
 
-    function confirmBack(e: Event): void {
-        if(!confirm(l('chat.confirmLeave'))) e.preventDefault();
-    }
-
     export default Vue.extend({
         components: {chat: Chat, modal: Modal, characterPage: CharacterPage, 'app-settings-dialog': AppSettingsDialog, 'app-exporter-dialog': AppExporterDialog},
         data() {
@@ -105,6 +101,7 @@
                 l,
                 settings: undefined as GeneralSettings | undefined,
                 profileName: '',
+                backButtonHandler: null as ((e: Event) => void) | null,
             };
         },
         computed: {
@@ -136,11 +133,27 @@
                     Socket.host = self.settings.host;
                     core.connection.setCredentials(self.settings.account, self.settings.password);
                     core.connection.onEvent('connected', () => {
-                        document.addEventListener('backbutton', confirmBack);
+                        self.backButtonHandler = (e: Event) => {
+                            const chatView = (self.$refs['chat'] as any)?.$refs?.['chatview'] as any;
+                            if (chatView) {
+                                if (chatView.activeMenuType !== 'none') {
+                                    chatView.$refs['userMenu']?.close();
+                                    chatView.$refs['channelMenu']?.close();
+                                    return;
+                                }
+                                const sidebar = chatView.$refs['sidebar'] as any;
+                                if (sidebar?.expanded) {
+                                    sidebar.expanded = false;
+                                    return;
+                                }
+                            }
+                            if (!confirm(l('chat.confirmLeave'))) e.preventDefault();
+                        };
+                        document.addEventListener('backbutton', self.backButtonHandler);
                         NativeBackground.start();
                     });
                     core.connection.onEvent('closed', () => {
-                        document.removeEventListener('backbutton', confirmBack);
+                        document.removeEventListener('backbutton', self.backButtonHandler!);
                         NativeBackground.stop();
                     });
                     self.characters = Object.keys(data.characters).map((name) => ({name, id: data.characters[name], deleted: false}))

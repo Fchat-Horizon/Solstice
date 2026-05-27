@@ -13,7 +13,7 @@
         'parent-menu-item': item.children && item.children.length > 0
       }"
       :style="item.topBorder ? { borderTopWidth: '1px' } : undefined"
-      @click.prevent="onItemClick(item)"
+      @click.prevent="onItemClick(item, index)"
     >
       <span v-if="item.iconClass" :class="item.iconClass" class="fa-fw"></span>
       <span class="action-label">{{ item.label }}</span>
@@ -31,6 +31,11 @@
         v-if="item.children && item.children.length > 0"
         :menu-items="item.children"
         class="child-menu"
+        :style="
+          isMobilePlatform
+            ? { display: activeChildIndex === index ? 'block' : 'none' }
+            : undefined
+        "
       />
     </a>
   </div>
@@ -57,9 +62,24 @@
         required: true
       }
     },
+    data() {
+      return {
+        activeChildIndex: null as number | null
+      };
+    },
+    computed: {
+      isMobilePlatform(): boolean {
+        return document.documentElement.dataset.mobilePlatform === 'true';
+      }
+    },
     methods: {
-      onItemClick(item: ContextMenuItemProps): void {
+      onItemClick(item: ContextMenuItemProps, index: number): void {
         if (item.disabled) return;
+        if (this.isMobilePlatform && item.children?.length) {
+          this.activeChildIndex =
+            this.activeChildIndex === index ? null : index;
+          return;
+        }
         item.onClick?.();
       }
     }
