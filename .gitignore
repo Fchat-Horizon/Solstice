@@ -9,6 +9,7 @@ node_modules/
 /electron/adblocker.bin
 
 .idea/
+.claude/
 
 .DS_Store
 
