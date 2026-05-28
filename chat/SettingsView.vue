@@ -1632,6 +1632,12 @@
     height: 90vh;
   }
 
+  #settings .modal-body {
+    display: block;
+    height: auto;
+    min-height: 0;
+  }
+
   #settings .form-group.filters label {
     display: list-item;
     margin: 0;
