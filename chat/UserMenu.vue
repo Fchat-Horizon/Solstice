@@ -590,8 +590,15 @@
             this.position.top = `${window.innerHeight - menu.offsetHeight - 1}px`;
         });
 
+        // Defer registration to the next macrotask so the click/tap that
+        // opened the menu finishes bubbling first — otherwise on mobile (where
+        // the menu opens from a synthetic click) that same event reaches
+        // document and immediately triggers closeOnOutsideClick.
         document.removeEventListener('click', this.closeOnOutsideClick);
-        document.addEventListener('click', this.closeOnOutsideClick);
+        setTimeout(
+          () => document.addEventListener('click', this.closeOnOutsideClick),
+          0
+        );
       }
     }
   });
