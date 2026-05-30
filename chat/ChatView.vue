@@ -260,7 +260,7 @@
         </div>
 
         <div
-          class="list-group conversation-nav"
+          class="list-group conversation-nav ungrouped-channels"
           ref="channelConversations"
           :style="sortedChannelGroups.length ? 'margin-top: 6px' : ''"
         >
@@ -288,6 +288,11 @@
                 :class="{ active: conversation.isSendingAutomatedAds() }"
                 :aria-label="l('chat.toggleAds')"
                 @click.stop="conversation.toggleAutomatedAds()"
+              ></span>
+              <span
+                class="pin fas fa-thumbtack"
+                @click="pinConversation(conversation)"
+                :aria-label="l('chat.pin')"
               ></span>
               <span
                 class="fas fa-times leave"
@@ -393,28 +398,27 @@
     <user-menu
       ref="userMenu"
       :reportDialog="$refs['reportDialog']"
-      @open="onMenuOpen('user')"
-      @close="onMenuClose('user')"
+      @open="onMenuOpen(ContextMenuTypes.User)"
+      @close="onMenuClose(ContextMenuTypes.User)"
     ></user-menu>
     <channel-menu
       ref="channelMenu"
       @assign="onChannelAssign"
       @create-group="onChannelCreateGroup"
-      @open="onMenuOpen('channel')"
-      @close="onMenuClose('channel')"
+      @open="onMenuOpen(ContextMenuTypes.Channel)"
+      @close="onMenuClose(ContextMenuTypes.Channel)"
     ></channel-menu>
+    <channel-group-menu
+      ref="channelGroupMenu"
+      @rename="onChannelGroupRename"
+      @open="onMenuOpen(ContextMenuTypes.ChannelGroup)"
+      @close="onMenuClose(ContextMenuTypes.ChannelGroup)"
+    ></channel-group-menu>
     <recent-conversations ref="recentDialog"></recent-conversations>
     <image-preview ref="imagePreview"></image-preview>
     <add-pm-partner ref="addPmPartnerDialog"></add-pm-partner>
 
     <quick-jump ref="quickJump"></quick-jump>
-
-    <toast
-      v-for="t in toasts"
-      :key="t.id"
-      v-bind="t"
-      @dismiss="dismissToast(t.id)"
-    />
   </div>
 </template>
 
@@ -429,6 +433,11 @@
   import { characterImage, getKey, profileLink } from './common';
   import ConversationView from './ConversationView.vue';
   import core from './core';
+  import {
+    endChannelDragging,
+    setActiveDropZone,
+    startChannelDragging
+  } from './channelDragDropHighlight';
   import { Character, Connection, Conversation } from './interfaces';
   import l from './localize';
   import PmPartnerAdder from './PmPartnerAdder.vue';
@@ -448,13 +457,12 @@
   import AdCenterDialog from './ads/AdCenter.vue';
   import AdLauncherDialog from './ads/AdLauncher.vue';
   import ChannelGroupSection from './ChannelGroupSection.vue';
+  import ChannelGroupMenu from './ChannelGroupMenu.vue';
   import ChannelMenu from './ChannelMenu.vue';
   import CustomDialog from '../components/custom_dialog';
   import Modal from '../components/Modal.vue';
   import QuickJump from './QuickJump.vue';
-  import { ipcRenderer } from 'electron';
-  import { toasts, showToast, updateToast, dismissToast } from './toast';
-  import Toast from '../components/Toast.vue';
+  import { group, log } from 'node:console';
 
   const unreadClasses = {
     [Conversation.UnreadState.None]: '',
@@ -466,7 +474,8 @@
     User = 'user',
     Channel = 'channel',
     ChannelGroup = 'channelGroup',
-    Eicon = 'eicon'
+    Eicon = 'eicon',
+    None = 'none'
   }
 
   export default Vue.extend({
@@ -488,8 +497,8 @@
       adLauncher: AdLauncherDialog,
       modal: Modal,
       'quick-jump': QuickJump,
-      toast: Toast,
       'channel-group-section': ChannelGroupSection,
+      'channel-group-menu': ChannelGroupMenu,
       'channel-menu': ChannelMenu,
       dropdown: Dropdown
     },
@@ -516,15 +525,9 @@
           e: KeyboardEvent
         ) => boolean,
         mouseButtonListener: undefined as any as (e: MouseEvent) => void,
-        autoBackupStatusListener: undefined as any as (
-          e: Electron.IpcRendererEvent,
-          status: string,
-          progress?: number
-        ) => void,
-        toasts: toasts,
-        dismissToast: dismissToast,
         pendingRenameGroupId: null as string | null,
-        activeMenuType: 'none' as 'none' | 'user' | 'channel',
+        activeMenuType: 'none' as ContextMenuTypes,
+        ContextMenuTypes: ContextMenuTypes,
         channelLongPressTimer: null as ReturnType<typeof setTimeout> | null,
         channelLongPressFired: false,
         pmLongPressTimer: null as ReturnType<typeof setTimeout> | null,
@@ -562,40 +565,6 @@
 
       this.mouseButtonListener = (e: MouseEvent) => this.onMouseButton(e);
       window.addEventListener('mouseup', this.mouseButtonListener);
-
-      this.autoBackupStatusListener = (_e, status, progress) => {
-        const id = 'auto-backup';
-        if (status === 'started') {
-          showToast({
-            id,
-            message: l('settings.autoBackup.toastInProgress'),
-            icon: 'fa-sync',
-            iconSpin: true,
-            progress: 0
-          });
-        } else if (status === 'progress' && typeof progress === 'number') {
-          updateToast(id, { progress });
-        } else if (status === 'success') {
-          updateToast(id, {
-            message: l('settings.autoBackup.toastComplete'),
-            icon: 'fa-check',
-            iconSpin: false,
-            variant: 'success',
-            progress: 1,
-            autoDismiss: 5000
-          });
-        } else if (status === 'error') {
-          updateToast(id, {
-            message: l('settings.autoBackup.toastFailed'),
-            icon: 'fa-exclamation-triangle',
-            iconSpin: false,
-            variant: 'error',
-            progress: undefined,
-            autoDismiss: 5000
-          });
-        }
-      };
-      ipcRenderer.on('auto-backup-status', this.autoBackupStatusListener);
 
       //We do this because it's a massive pain in the 🫏 to read some monstrosity of
       //an if-else statement to compare our platforms and then pick a keyboard shortcut in our keyboard handle event
@@ -658,14 +627,10 @@
         sort: true,
         animation: 150,
         fallbackTolerance: 5,
-        onStart: () =>
-          document
-            .getElementById('conversations')
-            ?.classList.add('channel-dragging'),
+        onStart: () => startChannelDragging(),
+        onMove: (e: any) => setActiveDropZone(e.to as HTMLElement | undefined),
         onEnd: async (e: any) => {
-          document
-            .getElementById('conversations')
-            ?.classList.remove('channel-dragging');
+          endChannelDragging();
           if (e.to !== e.from || e.oldIndex === e.newIndex) return;
           const allConvs = core.conversations.channelConversations;
           const ungrouped = allConvs.filter(
@@ -750,10 +715,6 @@
       window.removeEventListener('focus', this.focusListener);
       window.removeEventListener('blur', this.blurListener);
       window.removeEventListener('mouseup', this.mouseButtonListener);
-      ipcRenderer.removeListener(
-        'auto-backup-status',
-        this.autoBackupStatusListener
-      );
     },
     methods: {
       onMouseButton(e: MouseEvent): void {
@@ -1062,19 +1023,34 @@
         (<PmPartnerAdder>this.$refs['addPmPartnerDialog']).show();
       },
 
-      onMenuOpen(menuType: 'user' | 'channel'): void {
+      onMenuOpen(menuType: ContextMenuTypes): void {
         this.activeMenuType = menuType;
       },
 
-      onMenuClose(menuType: 'user' | 'channel'): void {
+      onMenuClose(menuType: ContextMenuTypes): void {
         if (this.activeMenuType === menuType) {
-          this.activeMenuType = 'none';
+          this.activeMenuType = ContextMenuTypes.None;
         }
       },
 
+      closeAllMenus(): void {
+        //i wanna rework this instancetype nonsense in a proper file that exposes types so we don't have to do this dumb casting bullshit anymore
+        //but it's out of scope for what i want to do now, so I'll do it when I want to clean up things again
+        (this.$refs.userMenu as InstanceType<typeof UserMenu>).close();
+        (this.$refs.channelMenu as InstanceType<typeof ChannelMenu>).close();
+        (
+          this.$refs.channelGroupMenu as InstanceType<typeof ChannelGroupMenu>
+        ).close();
+      },
+
       userMenuHandle(e: MouseEvent | TouchEvent): void {
-        const userMenu = this.$refs['userMenu'] as any;
-        const channelMenu = this.$refs['channelMenu'] as any;
+        const userMenu = this.$refs.userMenu as InstanceType<typeof UserMenu>;
+        const channelMenu = this.$refs.channelMenu as InstanceType<
+          typeof ChannelMenu
+        >;
+        const channelGroupMenu = this.$refs.channelGroupMenu as InstanceType<
+          typeof ChannelGroupMenu
+        >;
 
         if (e.type === 'contextmenu') {
           const channelEl = (e.target as HTMLElement).closest(
@@ -1087,14 +1063,32 @@
               (c: any) => c.channel.id === channelId
             );
             if (conv) {
-              if (this.activeMenuType === 'user') {
-                userMenu.close();
-              }
+              this.closeAllMenus();
               channelMenu.handleEvent(
                 e,
                 conv,
                 core.conversations.channelGroups,
                 core.conversations.channelGroupAssignments[channelId] ?? null
+              );
+              return;
+            }
+          }
+
+          const groupHeaderEl = (e.target as HTMLElement).closest(
+            '[data-group-id]'
+          );
+          if (groupHeaderEl) {
+            e.preventDefault();
+            const groupId = (groupHeaderEl as HTMLElement).dataset.groupId!;
+            const group = core.conversations.channelGroups.find(
+              g => g.id === groupId
+            );
+            if (group) {
+              this.closeAllMenus();
+              channelGroupMenu.handleEvent(
+                e as MouseEvent,
+                group,
+                core.conversations.channelGroups
               );
               return;
             }
@@ -1109,7 +1103,8 @@
               '[data-channel-id]'
             );
             if (channelEl) {
-              if (this.activeMenuType === 'channel') channelMenu.close();
+              if (this.activeMenuType === ContextMenuTypes.Channel)
+                channelMenu.close();
               const x = touch.clientX;
               const y = touch.clientY;
               this.channelLongPressTimer = setTimeout(() => {
@@ -1120,7 +1115,8 @@
                   (c: any) => c.channel.id === channelId
                 );
                 if (conv) {
-                  if (this.activeMenuType === 'user') userMenu.close();
+                  if (this.activeMenuType === ContextMenuTypes.User)
+                    userMenu.close();
                   channelMenu.handleEvent(
                     { clientX: x, clientY: y } as MouseEvent,
                     conv,
@@ -1137,7 +1133,8 @@
               'a.item-private[data-character]'
             );
             if (pmEl) {
-              if (this.activeMenuType === 'user') userMenu.close();
+              if (this.activeMenuType === ContextMenuTypes.User)
+                userMenu.close();
               const x = touch.clientX;
               const y = touch.clientY;
               this.pmLongPressTimer = setTimeout(() => {
@@ -1181,14 +1178,27 @@
           }
         }
 
-        if (
-          this.activeMenuType === 'channel' &&
-          (e.type === 'contextmenu' || e.type === 'touchstart')
-        ) {
+        if (e.type === 'contextmenu' || e.type === 'touchstart') {
           channelMenu.close();
+          channelGroupMenu.close();
         }
 
         userMenu.handleEvent(e);
+      },
+      onChannelGroupRename(groupId: string): void {
+        this.pendingRenameGroupId = groupId;
+      },
+      pinConversation(conversation: Conversation.ChannelConversation): void {
+        let groupId = '';
+        if (core.conversations.channelGroups.length < 1) {
+          groupId = core.conversations.createChannelGroup(
+            l('channel.group.ungrouped')
+          );
+        } else {
+          groupId = core.conversations.channelGroups[0].id;
+        }
+        console.log(`id: ${groupId}`);
+        this.onChannelAssign(conversation.channel.id, groupId);
       },
 
       onChannelAssign(channelId: string, groupId: string | null): void {
@@ -1559,18 +1569,32 @@
 
   // Drag-to-group styles
   // Show collapsed group lists as drop zones while dragging
-  #conversations.channel-dragging .channel-group-list {
-    display: block !important;
-    min-height: 28px;
+  #conversations.channel-dragging {
+    .channel-group-list,
+    .ungrouped-channels {
+      display: flex !important;
+      min-height: 28px;
+      &:empty::before {
+        content: 'Drop here!';
+        display: block;
+        text-align: center;
+        font-size: 0.75rem;
+        padding: 5px 0;
+        opacity: 0.5;
+      }
+      &.ungrouped-channels:empty::before {
+        content: 'Drop here to ungroup';
+      }
+    }
+
+    .channel-group-list,
+    .ungrouped-channels {
+      &.sortable-over {
+        --bs-border-color: var(--bs-primary);
+      }
+    }
   }
-  #conversations.channel-dragging .channel-group-list:empty::before {
-    content: 'Drop here';
-    display: block;
-    text-align: center;
-    font-size: 0.75rem;
-    padding: 5px 0;
-    opacity: 0.5;
-  }
+
   // Sortable ghost/chosen states for channels
   .item-channel.sortable-ghost {
     opacity: 0.4;

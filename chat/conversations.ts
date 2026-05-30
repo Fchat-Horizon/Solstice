@@ -614,7 +614,6 @@ class ChannelConversation
   }
 
   close(): void {
-    state.setChannelGroup(this.channel.id, null);
     core.connection.send('LCH', { channel: this.channel.id });
     clearInterval(this.cacheInterval);
     state.removeFromNavigationHistory(this);
@@ -1028,6 +1027,9 @@ class State implements Interfaces.State {
         channels: ungroupedPinned
       });
       await this.saveChannelGroups();
+      this.consoleTab.addMessage(
+        new EventMessage(l('channel.group.noticePinned'))
+      );
     }
     this.pinned.channels = this.channelGroups.flatMap(g => g.channels);
     //tslint:enable

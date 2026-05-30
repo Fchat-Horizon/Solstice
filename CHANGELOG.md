@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- MacOS builds are now code-signed and notarized. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/30b273bbaec3c8db43775fb1d11d69f3acac8fcc)
+  - Special thanks to the F-List team for sponsoring us, and extra thanks to Dari for helping us out with the process.
+
+### Changed since last pre-release
+
+<!-- To whoever will do the changelogs for the stable 2.2.0 release, everything under this header is not meant for the final changelogs. It's just to tell people who were using beta.2 what was fixed since the last release. It's not relevant for general users at all.-->
+
+- The 'pin channel' button is back, and if you only have one group it visibly merges into the normal channel list. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/2c2e508a7dc9c7ef12a1a59486e72e3249206cbf)
+  - This was polled on Discord and won out by a pretty considerable margin, but since that was for the test release we might repoll it with the general audience later on.
+- Importing 'pins' into the new group system now shows you a message about what's new. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/412ef877702f3551806fd239090ead743cfb8fd1)
+- Grouped all 'Remove from group' and 'Move to X' menu items for a channel into the same submenu. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/8391a1f2d21d6f7eba309a0bac16d50790a64f42)
+
+### Fixed since last pre-release
+
+<!-- To whoever will do the changelogs for the stable 2.2.0 release, everything under this header is not meant for the final changelogs. It's just to tell people who were using beta.2 what was fixed since the last release. It's not relevant for general users at all.-->
+
+- Fixed the user right-click menu closing when clicking inside the status area. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/dcdd0121e3cd3cbec74b42deb776b467553fb1c8)
+- Fixed channels being ungrouped before the server replies with a message saying you have left the channel, when you leave them for any reason. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/713a55f74e3c2105204587db5ab64d5b05347bae)
+  - This should fix ghostly afterimages of channels haunting you for a brief second after leaving them.
+- Fixed deleting a channel group with the little trash can button not having a confirmation dialog. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/efd7e267472f3db5e9f10e93a201c32be7380611)
+
+### Merged pull requests
+
+- https://github.com/Fchat-Horizon/Horizon/pull/794 by @Kannamoris
+- https://github.com/Fchat-Horizon/Horizon/pull/789 by @FatCatClient
+
+## [2.2.0-beta.2] - 2026-05-26
+
+### Changed since last pre-release
+
+<!-- To whoever will do the changelogs for the stable 2.2.0 release, everything under this header is not meant for the final changelogs. It's just to tell people who were using beta.1 what was fixed since the last release. It's not relevant for general users at all.-->
+
+- You can now click-drag channel groups around to sort them as well, instead of just individual channels. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/21e512db7fc4ffb6bc27163533fb29ce21c75217)
+- You can now right-click a channel group to rename, move, and delete it. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/ecfb06a08f6598b27827b215e96b1776cc24659a)
+
+### Fixed since last pre-release
+
+<!-- To whoever will do the changelogs for the stable 2.2.0 release, everything under this header is not meant for the final changelogs. It's just to tell people who were using beta.1 what was fixed since the last release. It's not relevant for general users at all.-->
+
+- Dropping channels inside of a group will now put them in the position where they were dropped, rather than at the end of the group. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/625276995a0309a660c3ac61a09fcb8f52055ae6)
+  - This also fixes issues where reordering channels into new groups would mess up the navigation order with keyboard shortcuts.
+- Fixed the automatic backup toast not being visible in cases where you have it backup your logs when you first connect. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/b7799285b95069d8c4270a866604fdb40df0c34e)
+- Fixed data export filenames using UTC time instead of your own timezone. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/1cb281f7df07c43b45e8fd7b48a0a335e1141b61)
+- Fixed cases where exporting data would fail if you tried to export an "empty" character directory. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/4450373daaf292668a34951bf722167867899a5d)
+
+### Merged Pull Requests
+
+- https://github.com/Fchat-Horizon/Horizon/pull/785 by @Kannamoris
+- https://github.com/Fchat-Horizon/Horizon/pull/790 by @Kannamoris and @FatCatClient
+- Non-PR'd changes by @CodingWithAnxiety and @FatCatClient
+
 ## [2.2.0-beta.1] - 2026-05-20
 
 ### Changed
@@ -1419,7 +1472,8 @@ Various improvements to channel groups:
 - IOS build removed [[Commit](https://github.com/Fchat-Horizon/Horizon/commit/41261d1ba7043eb7dfd5a1a6331dc604ff338814)]
 - Webchat removed [[Commit](https://github.com/Fchat-Horizon/Horizon/commit/b894a180b9be31f68d1458aaa3c59f9c4470da89)]
 
-[Unreleased]: https://github.com/Fchat-Horizon/Horizon/compare/v2.2.0-beta.1...development
+[Unreleased]: https://github.com/Fchat-Horizon/Horizon/compare/v2.2.0-beta.2...development
+[2.2.0-beta.2]: https://github.com/Fchat-Horizon/Horizon/compare/v2.2.0-beta.1...v2.2.0-beta.2
 [2.2.0-beta.1]: https://github.com/Fchat-Horizon/Horizon/compare/v2.2.0-beta.0...v2.2.0-beta.1
 [2.2.0-beta.0]: https://github.com/Fchat-Horizon/Horizon/compare/v2.1.4...v2.2.0-beta.0
 [2.1.4]: https://github.com/Fchat-Horizon/Horizon/compare/v2.1.3...v2.1.4

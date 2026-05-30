@@ -820,14 +820,6 @@
                       >
                         {{ l('settings.import.zip.pinnedUnavailable') }}
                       </small>
-                      <small
-                        v-else-if="importIncludeCharacterSettings"
-                        class="form-text text-muted"
-                      >
-                        {{
-                          l('settings.import.zip.pinnedIncludedWithSettings')
-                        }}
-                      </small>
                     </div>
                     <div class="form-check mb-2">
                       <input
@@ -849,14 +841,6 @@
                       >
                         {{ l('settings.import.zip.pinnedUnavailable') }}
                       </small>
-                      <small
-                        v-else-if="importIncludeCharacterSettings"
-                        class="form-text text-muted"
-                      >
-                        {{
-                          l('settings.import.zip.pinnedIncludedWithSettings')
-                        }}
-                      </small>
                     </div>
                     <div class="form-check mb-2">
                       <input
@@ -864,10 +848,7 @@
                         type="checkbox"
                         id="importIncludeRecents"
                         v-model="importIncludeRecents"
-                        :disabled="
-                          importIncludeCharacterSettings ||
-                          !importRecentsAvailable
-                        "
+                        :disabled="!importRecentsAvailable"
                       />
                       <label
                         class="form-check-label"
@@ -888,10 +869,7 @@
                         type="checkbox"
                         id="importIncludeHidden"
                         v-model="importIncludeHidden"
-                        :disabled="
-                          importIncludeCharacterSettings ||
-                          !importHiddenAvailable
-                        "
+                        :disabled="!importHiddenAvailable"
                       />
                       <label class="form-check-label" for="importIncludeHidden">
                         {{ l('settings.import.zip.includeHidden') }}

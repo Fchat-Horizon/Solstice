@@ -246,6 +246,7 @@ export default function (
 
       state.joinedChannels.splice(state.joinedChannels.indexOf(channel), 1);
       delete state.joinedMap[channel.id];
+      core.conversations.setChannelGroup(channel.id, null);
       for (const handler of state.handlers) await handler('leave', channel);
       if (item !== undefined) item.isJoined = false;
     } else {

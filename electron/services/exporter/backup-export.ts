@@ -15,10 +15,21 @@ import path from 'path';
 import log from 'electron-log';
 import archiver from 'archiver';
 import AdmZip from 'adm-zip';
-import { createManifest, isValidManifest } from './manifest';
-import type { ExportManifest } from './manifest';
+import {
+  createManifest,
+  isValidManifest,
+  shouldIncludeSettingsFile
+} from './manifest';
+import type { ExportManifest, SettingsSelection } from './manifest';
 import type { ExporterVm } from '../exporter-vm';
 import { binaryLogToJson } from './backup-export-cli';
+
+/**
+ * Directory holding the general (app-wide) settings file. This is fixed at
+ * `{userData}/data` regardless of the user's custom `logDirectory`, since the
+ * main process always reads/writes general settings there.
+ */
+const generalSettingsDir = path.join(remote.app.getPath('userData'), 'data');
 
 async function yieldToUi(vm?: ExporterVm): Promise<void> {
   try {
@@ -90,12 +101,17 @@ export function getSelectedExportCharacters(vm: ExporterVm): string[] {
 
 /**
  * Generates the default export file path with timestamp.
- * Filename format: `horizon-export-YYYY-MM-DDTHH-MM-SS.zip` (colons replaced with hyphens for Windows).
+ * Filename format: `horizon-export-YYYY-MM-DDTHH-MM-SS.zip` in the user's local
+ * time (colons replaced with hyphens for Windows).
  *
  * @returns Absolute path to a timestamped ZIP file in the user's Downloads folder
  */
 export function getExportDefaultPath(): string {
-  const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const timestamp =
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+    `T${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
   return path.join(
     remote.app.getPath('downloads'),
     `horizon-export-${timestamp}.zip`
@@ -134,7 +150,8 @@ function buildExportEntries(
   const entries: ExportEntry[] = [];
 
   if (vm.exportIncludeGeneralSettings) {
-    const generalSettingsFile = path.join(dataDir, 'settings');
+    // General settings always live at the fixed location, not under logDirectory.
+    const generalSettingsFile = path.join(generalSettingsDir, 'settings');
     if (fs.existsSync(generalSettingsFile))
       entries.push({ abs: generalSettingsFile, zip: 'settings' });
   }
@@ -172,27 +189,13 @@ function buildExportEntries(
 
     const settingsDir = path.join(characterDir, 'settings');
     if (fs.existsSync(settingsDir)) {
-      if (vm.exportIncludeCharacterSettings) {
-        const files = listFilesRecursive(settingsDir);
-        for (const abs of files) {
-          const rel = path.relative(settingsDir, abs).replace(/\\/g, '/');
-          const zip = path.posix.join('characters', character, 'settings', rel);
-          entries.push({ abs, zip });
-        }
-      } else {
-        const includeFiles = getSettingsFilesToInclude(vm);
-        for (const file of Array.from(includeFiles)) {
-          const filePath = path.join(settingsDir, file);
-          if (fs.existsSync(filePath)) {
-            const zip = path.posix.join(
-              'characters',
-              character,
-              'settings',
-              file
-            );
-            entries.push({ abs: filePath, zip });
-          }
-        }
+      const selection = exportSettingsSelection(vm);
+      const files = listFilesRecursive(settingsDir);
+      for (const abs of files) {
+        const rel = path.relative(settingsDir, abs).replace(/\\/g, '/');
+        if (!shouldIncludeSettingsFile(rel, selection)) continue;
+        const zip = path.posix.join('characters', character, 'settings', rel);
+        entries.push({ abs, zip });
       }
     }
   }
@@ -200,16 +203,14 @@ function buildExportEntries(
   return entries;
 }
 
-function getSettingsFilesToInclude(vm: ExporterVm): Set<string> {
-  const includeFiles = new Set<string>();
-  if (vm.exportIncludePinnedConversations) includeFiles.add('pinned');
-  if (vm.exportIncludePinnedEicons) includeFiles.add('favoriteEIcons');
-  if (vm.exportIncludeRecents) {
-    includeFiles.add('recent');
-    includeFiles.add('recentChannels');
-  }
-  if (vm.exportIncludeHidden) includeFiles.add('hiddenUsers');
-  return includeFiles;
+function exportSettingsSelection(vm: ExporterVm): SettingsSelection {
+  return {
+    includeCharacterSettings: vm.exportIncludeCharacterSettings,
+    includePinnedConversations: vm.exportIncludePinnedConversations,
+    includePinnedEicons: vm.exportIncludePinnedEicons,
+    includeRecents: vm.exportIncludeRecents,
+    includeHidden: vm.exportIncludeHidden
+  };
 }
 
 /**
@@ -304,6 +305,9 @@ export async function runExport(vm: ExporterVm): Promise<void> {
 
     const selectedCharacters = getSelectedExportCharacters(vm);
     const entries = buildExportEntries(dataDir, selectedCharacters, vm);
+    const charactersWithData = selectedCharacters.filter(char =>
+      entries.some(e => e.zip.startsWith(`characters/${char}/`))
+    );
     const total = entries.length || 1;
     vm.exportTotal = entries.length;
     vm.exportCount = 0;
@@ -323,7 +327,7 @@ export async function runExport(vm: ExporterVm): Promise<void> {
 
     // Write manifest as first entry
     const manifest = createManifest(
-      selectedCharacters,
+      charactersWithData,
       buildManifestIncludes(vm),
       entries.length,
       vm.settings?.logDirectory

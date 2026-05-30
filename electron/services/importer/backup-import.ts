@@ -16,11 +16,20 @@ import { ipcRenderer } from 'electron';
 import log from 'electron-log';
 import AdmZip from 'adm-zip';
 import type { IZipEntry } from 'adm-zip';
-import { isValidManifest } from '../exporter/manifest';
-import type { ExportManifest } from '../exporter/manifest';
+import {
+  isValidManifest,
+  shouldIncludeSettingsFile
+} from '../exporter/manifest';
+import type { ExportManifest, SettingsSelection } from '../exporter/manifest';
 import type { ExporterVm } from '../exporter-vm';
 /** Default log directory in the renderer process (avoids instantiating GeneralSettings). */
 const defaultLogDirectory = path.join(remote.app.getPath('userData'), 'data');
+/**
+ * Directory holding the general (app-wide) settings file. Fixed at
+ * `{userData}/data` regardless of the user's custom `logDirectory`, matching
+ * where the main process reads/writes general settings.
+ */
+const generalSettingsDir = defaultLogDirectory;
 
 /**
  * Information about a character found in a Horizon backup ZIP file.
@@ -478,32 +487,25 @@ function shouldImportEntry(
     decision.shouldImport = true;
     decision.isDrafts = true;
   } else if (category === 'settings' && info.hasSettings) {
-    decision.shouldImport = shouldImportSettingsFile(vm, segments, info);
+    decision.shouldImport = shouldImportSettingsFile(vm, segments);
   }
 
   return decision;
 }
 
-function shouldImportSettingsFile(
-  vm: ExporterVm,
-  segments: string[],
-  info: BackupCharacterInfo
-): boolean {
-  if (vm.importIncludeCharacterSettings) return true;
-
+function shouldImportSettingsFile(vm: ExporterVm, segments: string[]): boolean {
   const fileName = segments.slice(3).join('/');
-  return (
-    (fileName === 'pinned' &&
-      vm.importIncludePinnedConversations &&
-      info.hasPinnedConversations) ||
-    (fileName === 'favoriteEIcons' &&
-      vm.importIncludePinnedEicons &&
-      info.hasPinnedEicons) ||
-    ((fileName === 'recent' || fileName === 'recentChannels') &&
-      vm.importIncludeRecents &&
-      info.hasRecents) ||
-    (fileName === 'hiddenUsers' && vm.importIncludeHidden && info.hasHidden)
-  );
+  return shouldIncludeSettingsFile(fileName, importSettingsSelection(vm));
+}
+
+function importSettingsSelection(vm: ExporterVm): SettingsSelection {
+  return {
+    includeCharacterSettings: vm.importIncludeCharacterSettings,
+    includePinnedConversations: vm.importIncludePinnedConversations,
+    includePinnedEicons: vm.importIncludePinnedEicons,
+    includeRecents: vm.importIncludeRecents,
+    includeHidden: vm.importIncludeHidden
+  };
 }
 
 /**
@@ -538,7 +540,6 @@ async function checkConnectedCharacters(): Promise<boolean> {
 function importGeneralSettings(
   vm: ExporterVm,
   zip: AdmZip,
-  dataDir: string,
   stats: ImportStats
 ): void {
   if (!vm.importGeneralAvailable || !vm.importIncludeGeneralSettings) return;
@@ -547,7 +548,9 @@ function importGeneralSettings(
   const generalEntry = zip.getEntry('settings');
   if (!generalEntry) return;
 
-  const destination = getSafeDestination(dataDir, 'settings');
+  // General settings always belong at the fixed location, not under a custom
+  // log directory, so the main process can read them back.
+  const destination = getSafeDestination(generalSettingsDir, 'settings');
   if (!destination) return;
 
   fs.mkdirSync(path.dirname(destination), { recursive: true });
@@ -752,7 +755,7 @@ export async function runZipImport(vm: ExporterVm): Promise<void> {
       charactersTouched: new Set<string>()
     };
 
-    importGeneralSettings(vm, zip, dataDir, stats);
+    importGeneralSettings(vm, zip, stats);
     importCharacterData(
       vm,
       zip,

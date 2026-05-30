@@ -13,6 +13,7 @@
         'parent-menu-item': item.children && item.children.length > 0
       }"
       :style="item.topBorder ? { borderTopWidth: '1px' } : undefined"
+      @mouseenter="item.children?.length ? positionChild($event) : undefined"
       @click.prevent="onItemClick(item, index)"
     >
       <span v-if="item.iconClass" :class="item.iconClass" class="fa-fw"></span>
@@ -81,6 +82,27 @@
           return;
         }
         item.onClick?.();
+      },
+      positionChild(event: MouseEvent): void {
+        const item = event.currentTarget as HTMLElement;
+        const child = item.querySelector<HTMLElement>(':scope > .child-menu');
+        if (!child) return;
+
+        child.style.visibility = 'hidden';
+        child.style.display = 'block';
+        const itemRect = item.getBoundingClientRect();
+        const childW = child.offsetWidth;
+        const childH = child.offsetHeight;
+        child.style.visibility = '';
+        child.style.display = '';
+
+        child.style.left =
+          itemRect.right + childW > window.innerWidth ? 'auto' : '100%';
+        child.style.right =
+          itemRect.right + childW > window.innerWidth ? '100%' : 'auto';
+
+        const overflowBottom = itemRect.top + childH - window.innerHeight;
+        child.style.top = overflowBottom > 0 ? `${-overflowBottom}px` : '0';
       }
     }
   });
@@ -88,6 +110,8 @@
 
 <style scoped lang="scss">
   .parent-menu-item {
+    position: relative;
+
     .child-menu {
       display: none;
       position: absolute;

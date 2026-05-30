@@ -1,12 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 import archiver from 'archiver';
-import { createManifest } from './manifest';
+import { createManifest, shouldIncludeSettingsFile } from './manifest';
 
 /**
  * Configuration options for CLI-based export operations.
  *
- * @property dataDir - Absolute path to the Horizon data directory
+ * @property dataDir - Absolute path to the Horizon data directory (character data / logs)
+ * @property settingsDir - Absolute path to the general settings directory; defaults to dataDir. Pass the fixed `{userData}/data` when the log directory is custom.
  * @property out - Absolute path where the output ZIP file will be created
  * @property includeGeneral - Include general application settings
  * @property includeCharacterSettings - Include all character-specific settings files
@@ -21,6 +22,7 @@ import { createManifest } from './manifest';
  */
 export interface ExportCliOptions {
   dataDir: string;
+  settingsDir?: string;
   out: string;
   includeGeneral: boolean;
   includeCharacterSettings: boolean;
@@ -112,34 +114,11 @@ function addCharacterSettings(
   const settingsDir = path.join(characterDir, 'settings');
   if (!fs.existsSync(settingsDir)) return;
 
-  if (opts.includeCharacterSettings) {
-    const files = listFilesRecursive(settingsDir);
-    for (const abs of files) {
-      const rel = path.relative(settingsDir, abs).replace(/\\/g, '/');
-      const zipPath = path.posix.join('characters', character, 'settings', rel);
-      archive.file(abs, { name: zipPath });
-    }
-  } else {
-    const includeFiles = new Set<string>();
-    if (opts.includePinnedConversations) includeFiles.add('pinned');
-    if (opts.includePinnedEicons) includeFiles.add('favoriteEIcons');
-    if (opts.includeRecents) {
-      includeFiles.add('recent');
-      includeFiles.add('recentChannels');
-    }
-    if (opts.includeHidden) includeFiles.add('hiddenUsers');
-    for (const file of Array.from(includeFiles)) {
-      const filePath = path.join(settingsDir, file);
-      if (fs.existsSync(filePath)) {
-        const zipPath = path.posix.join(
-          'characters',
-          character,
-          'settings',
-          file
-        );
-        archive.file(filePath, { name: zipPath });
-      }
-    }
+  for (const abs of listFilesRecursive(settingsDir)) {
+    const rel = path.relative(settingsDir, abs).replace(/\\/g, '/');
+    if (!shouldIncludeSettingsFile(rel, opts)) continue;
+    const zipPath = path.posix.join('characters', character, 'settings', rel);
+    archive.file(abs, { name: zipPath });
   }
 }
 
@@ -185,7 +164,10 @@ function logDryRunDetails(
   console.log('');
 
   console.log('Export options:');
-  const generalSettingsFile = path.join(dataDir, 'settings');
+  const generalSettingsFile = path.join(
+    opts.settingsDir ?? dataDir,
+    'settings'
+  );
   const hasGeneral = fs.existsSync(generalSettingsFile);
   console.log(
     `  - General settings: ${opts.includeGeneral && hasGeneral ? 'YES' : 'NO'}`
@@ -221,7 +203,10 @@ function countEntries(
   let count = 0;
 
   if (opts.includeGeneral) {
-    const generalSettingsFile = path.join(dataDir, 'settings');
+    const generalSettingsFile = path.join(
+      opts.settingsDir ?? dataDir,
+      'settings'
+    );
     if (fs.existsSync(generalSettingsFile)) count++;
   }
 
@@ -242,20 +227,9 @@ function countEntries(
 
     const settingsDir = path.join(characterDir, 'settings');
     if (fs.existsSync(settingsDir)) {
-      if (opts.includeCharacterSettings) {
-        count += listFilesRecursive(settingsDir).length;
-      } else {
-        const files = new Set<string>();
-        if (opts.includePinnedConversations) files.add('pinned');
-        if (opts.includePinnedEicons) files.add('favoriteEIcons');
-        if (opts.includeRecents) {
-          files.add('recent');
-          files.add('recentChannels');
-        }
-        if (opts.includeHidden) files.add('hiddenUsers');
-        for (const f of Array.from(files)) {
-          if (fs.existsSync(path.join(settingsDir, f))) count++;
-        }
+      for (const abs of listFilesRecursive(settingsDir)) {
+        const rel = path.relative(settingsDir, abs).replace(/\\/g, '/');
+        if (shouldIncludeSettingsFile(rel, opts)) count++;
       }
     }
   }
@@ -301,7 +275,10 @@ async function createArchive(
   });
 
   if (opts.includeGeneral) {
-    const generalSettingsFile = path.join(dataDir, 'settings');
+    const generalSettingsFile = path.join(
+      opts.settingsDir ?? dataDir,
+      'settings'
+    );
     if (fs.existsSync(generalSettingsFile)) {
       archive.file(generalSettingsFile, { name: 'settings' });
     }

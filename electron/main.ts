@@ -43,6 +43,7 @@ import * as electron from 'electron';
 import log from 'electron-log'; //tslint:disable-line:match-default-export-name
 import * as fs from 'fs';
 import * as path from 'path';
+import { execFile } from 'child_process';
 // import * as url from 'url';
 import l from '../chat/localize';
 import { defaultHost, GeneralSettings } from './common';
@@ -169,6 +170,7 @@ EXAMPLES:
     const dryRun = has('-n') || has('--dry-run');
     const exportResult = await runExportCli({
       dataDir,
+      settingsDir: path.join(app.getPath('userData'), 'data'),
       out,
       includeGeneral: include('--include-general', true),
       includeCharacterSettings: include('--include-character-settings', true),
@@ -212,6 +214,7 @@ EXAMPLES:
     const importResult = await runImportCli({
       zip,
       dataDir,
+      settingsDir: path.join(app.getPath('userData'), 'data'),
       includeGeneral: include('--include-general', true),
       includeCharacterSettings: include('--include-character-settings', true),
       includeLogs: include('--include-logs', true),
@@ -353,57 +356,73 @@ async function checkForGitRelease(
     log.error(`Error checking for update: ${e}`);
   }
 }
-export function openURLExternally(linkUrl: string): void {
-  // check if user set a path and whether it exists
-  const pathIsValid =
-    settings.browserPath !== '' && fs.existsSync(settings.browserPath);
+// Schemes safe to hand to a spawned browser; anything else goes to the OS.
+const EXTERNAL_BROWSER_SCHEMES = ['http:', 'https:'];
 
-  if (pathIsValid) {
-    // also check if the user can execute whatever is located at the selected path
-    let fileIsExecutable = false;
-    try {
-      fs.accessSync(settings.browserPath, fs.constants.X_OK);
-      fileIsExecutable = true;
-    } catch (err) {
-      log.error(
-        `Selected browser is not executable by user. Path: "${settings.browserPath}"`
-      );
-    }
+function resolveCustomBrowser(): string | null {
+  const browserPath = settings.browserPath;
+  if (browserPath === '' || !fs.existsSync(browserPath)) return null;
 
-    if (fileIsExecutable) {
-      // regular expression that looks for an encoded % symbol followed by two hexadecimal characters
-      // using this expression, we can find parts of the URL that were encoded twice
-      const re = /%25([0-9a-f]{2})/gi;
-
-      // encode the URL no matter what
-      linkUrl = encodeURI(linkUrl);
-
-      // eliminate double-encoding using expression above
-      linkUrl = linkUrl.replace(re, '%$1');
-
-      if (!settings.browserArgs.includes('%s')) {
-        // append %s to params if it is not already there
-        settings.browserArgs += ' %s';
-      }
-
-      // replace %s in arguments with URL and encapsulate in quotes to prevent issues with spaces and special characters in the path
-      let link = settings.browserArgs.replace('%s', '"' + linkUrl + '"');
-
-      const execFile = require('child_process').exec;
-      if (process.platform === 'darwin') {
-        // NOTE: This is seemingly bugged on MacOS when setting Safari as the external browser while using a different default browser.
-        // In that case, this will open the URL in both the selected application AND the default browser.
-        // Other browsers work fine. (Tested with Chrome with Firefox as the default browser.)
-        // https://developer.apple.com/forums/thread/685385
-        execFile(`open -a "${settings.browserPath}" ${link}`);
-      } else {
-        execFile(`"${settings.browserPath}" ${link}`);
-      }
-      return;
-    }
+  try {
+    fs.accessSync(browserPath, fs.constants.X_OK);
+  } catch {
+    log.error(
+      `Selected browser is not executable by user. Path: "${browserPath}"`
+    );
+    return null;
   }
 
-  electron.shell.openExternal(linkUrl);
+  return browserPath;
+}
+
+function isWebUrl(linkUrl: string): boolean {
+  try {
+    return EXTERNAL_BROWSER_SCHEMES.includes(new URL(linkUrl).protocol);
+  } catch {
+    return false;
+  }
+}
+
+// Encode the URL once, undoing any accidental double-encoding (%25xx -> %xx).
+function normalizeUrl(linkUrl: string): string {
+  return encodeURI(linkUrl).replace(/%25([0-9a-f]{2})/gi, '%$1');
+}
+
+export function openURLExternally(linkUrl: string): void {
+  const browserPath = resolveCustomBrowser();
+
+  // No custom browser, or not a web link: let the OS handle it.
+  if (browserPath === null || !isWebUrl(linkUrl)) {
+    electron.shell.openExternal(linkUrl);
+    return;
+  }
+
+  const url = normalizeUrl(linkUrl);
+  const argTokens = settings.browserArgs.split(/\s+/).filter(Boolean);
+
+  // execFile uses no shell, so the URL is an inert argument: it cannot inject
+  // commands, and the http(s) guard keeps it from being read as a flag.
+  if (process.platform === 'darwin') {
+    // `open -a <app>`: args before --args are documents (the URL); flags follow
+    // --args. NOTE: Safari-as-browser with a different OS default opens the URL
+    // twice. https://developer.apple.com/forums/thread/685385
+    const flags = argTokens.filter(arg => !arg.includes('%s'));
+    const openArgs = ['-a', browserPath, url];
+    if (flags.length > 0) openArgs.push('--args', ...flags);
+    execFile('open', openArgs);
+    return;
+  }
+
+  // Substitute the URL into %s (e.g. --app=%s), or append it if absent.
+  let urlSubstituted = false;
+  const launchArgs = argTokens.map(arg => {
+    if (!arg.includes('%s')) return arg;
+    urlSubstituted = true;
+    return arg.replace('%s', url);
+  });
+  if (!urlSubstituted) launchArgs.push(url);
+
+  execFile(browserPath, launchArgs);
 }
 
 let zoomLevel = settings.zoomLevel;
