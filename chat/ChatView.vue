@@ -5,6 +5,7 @@
     @click="userMenuHandle"
     @contextmenu="userMenuHandle"
     @touchstart.passive="userMenuHandle"
+    @touchmove.passive="userMenuHandle"
     @touchend="userMenuHandle"
   >
     <sidebar id="sidebar" ref="sidebar" :label="l('chat.menu')" icon="fa-bars">
@@ -531,7 +532,8 @@
         channelLongPressTimer: null as ReturnType<typeof setTimeout> | null,
         channelLongPressFired: false,
         pmLongPressTimer: null as ReturnType<typeof setTimeout> | null,
-        pmLongPressFired: false
+        pmLongPressFired: false,
+        longPressStart: null as { x: number; y: number } | null
       };
     },
     computed: {
@@ -1099,6 +1101,7 @@
           const te = e as TouchEvent;
           if (te.touches.length === 1) {
             const touch = te.touches[0];
+            this.longPressStart = { x: touch.clientX, y: touch.clientY };
             const channelEl = (touch.target as HTMLElement).closest(
               '[data-channel-id]'
             );
@@ -1156,6 +1159,29 @@
           }
         }
 
+        if (e.type === 'touchmove') {
+          // A drag (e.g. reordering channels) or scroll should cancel a pending
+          // long-press, otherwise the context menu pops open mid-drag.
+          const te = e as TouchEvent;
+          const touch = te.touches[0];
+          if (
+            touch &&
+            this.longPressStart &&
+            (Math.abs(touch.clientX - this.longPressStart.x) > 10 ||
+              Math.abs(touch.clientY - this.longPressStart.y) > 10)
+          ) {
+            if (this.channelLongPressTimer !== null) {
+              clearTimeout(this.channelLongPressTimer);
+              this.channelLongPressTimer = null;
+            }
+            if (this.pmLongPressTimer !== null) {
+              clearTimeout(this.pmLongPressTimer);
+              this.pmLongPressTimer = null;
+            }
+          }
+          return;
+        }
+
         if (e.type === 'touchend') {
           if (this.channelLongPressTimer !== null) {
             clearTimeout(this.channelLongPressTimer);
@@ -1179,8 +1205,16 @@
         }
 
         if (e.type === 'contextmenu' || e.type === 'touchstart') {
-          channelMenu.close();
-          channelGroupMenu.close();
+          // Don't close a menu when the interaction starts inside it, otherwise
+          // a mobile touchstart on a menu item closes the menu before its click
+          // can fire the action.
+          const target = e.target as Node | null;
+          const channelMenuEl = (channelMenu as any).$el as HTMLElement | null;
+          const channelGroupMenuEl = (channelGroupMenu as any)
+            .$el as HTMLElement | null;
+          if (!(target && channelMenuEl?.contains(target))) channelMenu.close();
+          if (!(target && channelGroupMenuEl?.contains(target)))
+            channelGroupMenu.close();
         }
 
         userMenu.handleEvent(e);

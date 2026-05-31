@@ -32,6 +32,7 @@
         v-if="item.children && item.children.length > 0"
         :menu-items="item.children"
         class="child-menu"
+        :class="{ 'child-menu-inline': isMobilePlatform }"
         :style="
           isMobilePlatform
             ? { display: activeChildIndex === index ? 'block' : 'none' }
@@ -120,8 +121,20 @@
       z-index: 1000;
       min-width: 220px;
     }
-    &:hover .child-menu {
+    &:hover .child-menu:not(.child-menu-inline) {
       display: block;
+    }
+
+    // On mobile the submenu expands inline (below the parent item) instead of
+    // flying out to the side, which would render off the edge of the screen.
+    .child-menu-inline {
+      position: static;
+      left: auto;
+      top: auto;
+      min-width: 0;
+      width: 100%;
+      margin-top: 3px;
+      box-shadow: none;
     }
   }
   .context-menu {

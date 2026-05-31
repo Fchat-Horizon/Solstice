@@ -135,10 +135,25 @@
           )
             this.position.top = `${window.innerHeight - menu.offsetHeight - 1}px`;
         });
-        document.addEventListener('click', this.close, { once: true });
+        // Defer registration so the click/long-press that opened the menu
+        // finishes first. Use closeOnOutsideClick (not a plain once-listener)
+        // so taps *inside* the menu — e.g. expanding the "Move to..." submenu —
+        // don't close the whole menu.
+        document.removeEventListener('click', this.closeOnOutsideClick);
+        setTimeout(
+          () => document.addEventListener('click', this.closeOnOutsideClick),
+          0
+        );
+      },
+      closeOnOutsideClick(e: MouseEvent): void {
+        const menu = this.$refs['menu'] as HTMLElement | undefined;
+        if (menu && menu.contains(e.target as Node)) return;
+        document.removeEventListener('click', this.closeOnOutsideClick);
+        this.close();
       },
       close(): void {
         if (!this.showMenu) return;
+        document.removeEventListener('click', this.closeOnOutsideClick);
         this.showMenu = false;
         this.$emit('close');
       },
