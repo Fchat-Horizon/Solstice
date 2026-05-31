@@ -7,10 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+## [2.2.0-beta.3] - 2026-05-31
 
-- MacOS builds are now code-signed and notarized. [[Commit]](https://github.com/Fchat-Horizon/Horizon/commit/30b273bbaec3c8db43775fb1d11d69f3acac8fcc)
-  - Special thanks to the F-List team for sponsoring us, and extra thanks to Dari for helping us out with the process.
+This release syncs Solstice with the latest Horizon `development`, pulling in the upstream changes listed below (channel groups & pins, the channel-group context menu, exporter fixes, and more) on top of a set of mobile-specific context-menu fixes. [[Merge]](https://github.com/Fchat-Horizon/Solstice/commit/ba4b2ac0cbb903821348598c1c1251227d7e6f91)
+
+### Fixed (Solstice mobile)
+
+- Fixed tapping an item in a channel or channel-group context menu closing the menu without running the action. [[Commit]](https://github.com/Fchat-Horizon/Solstice/commit/f4c3530d21efb57c6a75433defb87ec08831637f)
+- Fixed the channel "Move to…" submenu either doing nothing or rendering off the edge of the screen — submenus now expand inline on mobile. [[Commit]](https://github.com/Fchat-Horizon/Solstice/commit/f4c3530d21efb57c6a75433defb87ec08831637f)
+- Fixed the profile/user menu instantly closing the moment it was opened by tapping a character name. [[Commit]](https://github.com/Fchat-Horizon/Solstice/commit/eb95659c6ffe569fd2d389ce518245ba3e239bcb)
+- Fixed long-pressing to drag-reorder a channel also popping its context menu open mid-drag. [[Commit]](https://github.com/Fchat-Horizon/Solstice/commit/f4c3530d21efb57c6a75433defb87ec08831637f)
 
 ### Changed since last pre-release
 
@@ -1472,7 +1478,8 @@ Various improvements to channel groups:
 - IOS build removed [[Commit](https://github.com/Fchat-Horizon/Horizon/commit/41261d1ba7043eb7dfd5a1a6331dc604ff338814)]
 - Webchat removed [[Commit](https://github.com/Fchat-Horizon/Horizon/commit/b894a180b9be31f68d1458aaa3c59f9c4470da89)]
 
-[Unreleased]: https://github.com/Fchat-Horizon/Horizon/compare/v2.2.0-beta.2...development
+[Unreleased]: https://github.com/Fchat-Horizon/Solstice/compare/v2.2.0-beta.3...development
+[2.2.0-beta.3]: https://github.com/Fchat-Horizon/Solstice/compare/v2.2.0-beta.2...v2.2.0-beta.3
 [2.2.0-beta.2]: https://github.com/Fchat-Horizon/Horizon/compare/v2.2.0-beta.1...v2.2.0-beta.2
 [2.2.0-beta.1]: https://github.com/Fchat-Horizon/Horizon/compare/v2.2.0-beta.0...v2.2.0-beta.1
 [2.2.0-beta.0]: https://github.com/Fchat-Horizon/Horizon/compare/v2.1.4...v2.2.0-beta.0
