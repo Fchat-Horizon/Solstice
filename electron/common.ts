@@ -29,6 +29,7 @@ export class GeneralSettings {
   profileViewer = true;
   profileViewerGalleryType: ProfileViewerGalleryType = 'thumbnail';
   profileViewerThumbAnimate = false;
+  profileViewerSmallerDefaultAvatars = false;
   proxy: string = '';
   host = defaultHost;
   logDirectory = path.join(electron.app.getPath('userData'), 'data');

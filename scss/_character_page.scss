@@ -1,15 +1,3 @@
-.character-avatar.character-page-avatar {
-  width: 100%;
-  height: auto;
-  max-height: 50vh;
-  object-fit: contain;
-  z-index: 1;
-  position: relative;
-  &[src^='https://static.f-list.net/images/avatar/'] {
-    object-fit: scale-down;
-  }
-}
-
 .character-page-avatar-bg {
   width: 100%;
   position: relative;
@@ -27,11 +15,26 @@
     background-image: var(--character-avatar-bg);
     background-size: cover;
     background-position: center;
-    filter: blur(30px);
-    transform: scale(0.7);
-    z-index: 0;
-    opacity: 0.6;
-    border-radius: 100%;
+  }
+  &.small-default-avatar {
+    &::before {
+      filter: blur(30px);
+      transform: scale(0.7);
+      z-index: 0;
+      opacity: 0.6;
+      border-radius: 100%;
+    }
+    .character-avatar.character-page-avatar[src^='https://static.f-list.net/images/avatar/'] {
+      object-fit: scale-down;
+    }
+  }
+  .character-avatar.character-page-avatar {
+    width: 100%;
+    height: auto;
+    max-height: 50vh;
+    object-fit: contain;
+    z-index: 1;
+    position: relative;
   }
 }
 

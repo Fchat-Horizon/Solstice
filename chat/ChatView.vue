@@ -436,8 +436,10 @@
   import core from './core';
   import {
     endChannelDragging,
+    endGroupDragging,
     setActiveDropZone,
-    startChannelDragging
+    startChannelDragging,
+    startGroupDragging
   } from './channelDragDropHighlight';
   import { Character, Connection, Conversation } from './interfaces';
   import l from './localize';
@@ -613,7 +615,11 @@
         handle: '.channel-group-header',
         animation: 150,
         fallbackTolerance: 5,
+        swapThreshold: 0.65,
+        invertSwap: true,
+        onStart: () => startGroupDragging(),
         onEnd: (e: Sortable.SortableEvent) => {
+          endGroupDragging();
           if (e.oldIndex === e.newIndex) return;
           const sorted = [...core.conversations.channelGroups].sort(
             (a, b) => a.order - b.order
@@ -1626,6 +1632,15 @@
       &.sortable-over {
         --bs-border-color: var(--bs-primary);
       }
+    }
+  }
+
+  // Keep every group a stable, non-zero height while reordering groups so
+  // collapsed/empty groups don't collapse toward 0px and destabilise SortableJS
+  // hit-testing.
+  #conversations.group-dragging {
+    .channel-group {
+      min-height: 28px;
     }
   }
 

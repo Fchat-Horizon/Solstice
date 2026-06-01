@@ -3,7 +3,9 @@
     <div class="card-body">
       <div
         class="character-page-avatar-bg d-inline-block"
+        :class="smallDefaultAvatar ? 'small-default-avatar' : ''"
         :style="
+          smallDefaultAvatar &&
           getAvatarUrl().startsWith('https://static.f-list.net/images/avatar')
             ? `--character-avatar-bg: url('${getAvatarUrl()}')`
             : ''
@@ -361,6 +363,12 @@
       },
       bookmarked(): boolean {
         return this.character.bookmarked || false;
+      },
+      smallDefaultAvatar(): boolean {
+        return (
+          core.state.generalSettings?.profileViewerSmallerDefaultAvatars ===
+          true
+        );
       }
     },
     methods: {
