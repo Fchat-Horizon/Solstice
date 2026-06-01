@@ -76,6 +76,7 @@ class MainActivity : Activity() {
 		webView.addJavascriptInterface(Notifications(this), "NativeNotification")
 		webView.addJavascriptInterface(backgroundPlugin, "NativeBackground")
 		webView.addJavascriptInterface(Logs(this), "NativeLogs")
+		webView.addJavascriptInterface(Clipboard(this), "NativeClipboard")
 		webView.setDownloadListener { url, _, _, _, _ ->
 			if(Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
 				val permission = checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
