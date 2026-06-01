@@ -2,16 +2,18 @@
 // Called by release-it after bumping the root package.json (and usable
 // standalone). Keeps the other version-bearing files in sync with the root:
 //   - electron/package.json  -> same version string
+//   - mobile/package.json     -> same version string
 //   - mobile/android/app/build.gradle -> versionName + incremented versionCode
 const fs = require('fs');
 const version = process.argv[2];
 if (!version) throw new Error('Usage: sync-electron-version.js <version>');
 
-// electron/package.json
-const electronPath = 'electron/package.json';
-const pkg = JSON.parse(fs.readFileSync(electronPath, 'utf8'));
-pkg.version = version;
-fs.writeFileSync(electronPath, JSON.stringify(pkg, null, 2) + '\n');
+// package.json files that mirror the root version string verbatim.
+for (const pkgPath of ['electron/package.json', 'mobile/package.json']) {
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  pkg.version = version;
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+}
 
 // Android: set versionName and bump versionCode (must increase for the OS to
 // recognise a sideloaded APK as an update).

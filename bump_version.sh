@@ -41,9 +41,17 @@ if ! command -v jq &> /dev/null; then
     exit 1
 fi
 
-# Paths to package.json files
+# Check if node is installed (required to run the version-sync script)
+if ! command -v node &> /dev/null; then
+    echo -e "${YELLOW}Error: node is not installed.${NC}"
+    echo "node is required to sync the electron, mobile, and Android versions."
+    exit 1
+fi
+
+# Paths to version-bearing files
 ROOT_PACKAGE="package.json"
 ELECTRON_PACKAGE="electron/package.json"
+SYNC_SCRIPT="scripts/sync-electron-version.js"
 
 # Check if files exist
 if [ ! -f "$ROOT_PACKAGE" ]; then
@@ -94,7 +102,7 @@ else
 
     # Confirm the change
     echo
-    echo -e "Will update version from ${GREEN}$ROOT_CURRENT_VERSION${NC} to ${GREEN}$NEW_VERSION${NC} in both package.json files."
+    echo -e "Will update version from ${GREEN}$ROOT_CURRENT_VERSION${NC} to ${GREEN}$NEW_VERSION${NC} across all version files (root, electron, mobile, Android)."
     read -p "Continue? (y/n): " CONFIRM
 
     if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
@@ -108,14 +116,16 @@ else
     # Update root package.json
     jq ".version = \"$NEW_VERSION\"" "$ROOT_PACKAGE" > "$ROOT_PACKAGE.tmp" && mv "$ROOT_PACKAGE.tmp" "$ROOT_PACKAGE"
 
-    # Update electron package.json
-    jq ".version = \"$NEW_VERSION\"" "$ELECTRON_PACKAGE" > "$ELECTRON_PACKAGE.tmp" && mv "$ELECTRON_PACKAGE.tmp" "$ELECTRON_PACKAGE"
+    # Sync the remaining version-bearing files from the root version:
+    #   electron/package.json, mobile/package.json, and the Android
+    #   build.gradle (versionName + incremented versionCode).
+    node "$SYNC_SCRIPT" "$NEW_VERSION"
 
     # Check if updates were successful
     if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Successfully updated version to $NEW_VERSION in both package.json files.${NC}"
+        echo -e "${GREEN}✓ Successfully updated version to $NEW_VERSION across all version files.${NC}"
     else
-        echo -e "${YELLOW}Error: Failed to update one or both package.json files.${NC}"
+        echo -e "${YELLOW}Error: Failed to update one or more version files.${NC}"
         exit 1
     fi
 fi
@@ -132,7 +142,7 @@ if command -v git &> /dev/null; then
         
         if [[ $GIT_CONFIRM =~ ^[Yy]$ ]]; then
             echo -e "${BLUE}Running git add...${NC}"
-            git add "$ROOT_PACKAGE" "$ELECTRON_PACKAGE"
+            git add "$ROOT_PACKAGE" "$ELECTRON_PACKAGE" mobile/package.json mobile/android/app/build.gradle
             
             if [ $? -eq 0 ]; then
                 echo -e "${BLUE}Running git commit...${NC}"
@@ -151,7 +161,7 @@ if command -v git &> /dev/null; then
         else
             echo
             echo -e "Changes were not committed. If you want to commit them later:"
-            echo -e "  git add package.json electron/package.json"
+            echo -e "  git add package.json electron/package.json mobile/package.json mobile/android/app/build.gradle"
             echo -e "  git commit -m \"Bump version to $NEW_VERSION\""
             echo -e "  git tag -a \"v$NEW_VERSION\" -m \"Version $NEW_VERSION\""
             exit 0
@@ -180,7 +190,7 @@ if command -v git &> /dev/null; then
 else
     echo
     echo -e "Git not found. You may want to manually commit these changes:"
-    echo -e "  git add package.json electron/package.json"
+    echo -e "  git add package.json electron/package.json mobile/package.json mobile/android/app/build.gradle"
     echo -e "  git commit -m \"Bump version to $NEW_VERSION\""
     echo -e "  git tag -a \"v$NEW_VERSION\" -m \"Version $NEW_VERSION\""
 fi
