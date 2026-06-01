@@ -54,7 +54,7 @@ document.documentElement.dataset.mobilePlatform = 'true';
 // so shouldOverrideUrlLoading can intercept and handle them.
 (window as any).open = (url: string) => { window.location.href = url; return null; };
 
-const connection = new Connection('F-Chat 3.0 (Mobile)', appVersion, Socket);
+const connection = new Connection('Solstice (Mobile)', appVersion, Socket);
 initCore(connection, new GeneralSettings() as any, Logs, SettingsStore, Notifications);
 
 new Index({ //tslint:disable-line:no-unused-expression
