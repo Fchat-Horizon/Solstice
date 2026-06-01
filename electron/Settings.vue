@@ -111,7 +111,8 @@
                 </div>
 
                 <!--On MacOS, Electron uses the OS' native spell checker as of version 35.2.0 -->
-                <div class="mb-3" v-if="!isMac">
+                <!--Mobile keyboards provide their own spell-check; the Electron spell checker is unavailable in the WebView. -->
+                <div class="mb-3" v-if="!isMac && !isMobile">
                   <label
                     class="control-label"
                     for="spellCheckLang"
@@ -182,35 +183,38 @@
                   </div>
                 </div>
 
-                <h5>
-                  {{ l('settings.updates') }}
-                </h5>
-                <div class="mb-3">
-                  <div class="form-check">
-                    <input
-                      type="checkbox"
-                      id="updateCheck"
-                      v-model="settings.updateCheck"
-                      class="form-check-input"
-                    />
-                    <label class="form-check-label" for="updateCheck">
-                      {{ l('settings.updateCheck') }}
-                    </label>
+                <!-- App auto-update is desktop-only; mobile updates ship as APKs. -->
+                <template v-if="!isMobile">
+                  <h5>
+                    {{ l('settings.updates') }}
+                  </h5>
+                  <div class="mb-3">
+                    <div class="form-check">
+                      <input
+                        type="checkbox"
+                        id="updateCheck"
+                        v-model="settings.updateCheck"
+                        class="form-check-input"
+                      />
+                      <label class="form-check-label" for="updateCheck">
+                        {{ l('settings.updateCheck') }}
+                      </label>
+                    </div>
                   </div>
-                </div>
-                <div class="mb-3" v-if="settings.updateCheck">
-                  <div class="form-check">
-                    <input
-                      type="checkbox"
-                      id="beta"
-                      v-model="settings.beta"
-                      class="form-check-input"
-                    />
-                    <label class="form-check-label" for="beta">
-                      {{ l('settings.beta') }}
-                    </label>
+                  <div class="mb-3" v-if="settings.updateCheck">
+                    <div class="form-check">
+                      <input
+                        type="checkbox"
+                        id="beta"
+                        v-model="settings.beta"
+                        class="form-check-input"
+                      />
+                      <label class="form-check-label" for="beta">
+                        {{ l('settings.beta') }}
+                      </label>
+                    </div>
                   </div>
-                </div>
+                </template>
               </div>
               <!--Appearance-->
               <div
@@ -221,7 +225,8 @@
                 <h5>
                   {{ l('settings.theme') }}
                 </h5>
-                <div class="mb-3">
+                <!-- System theme sync relies on OS dark-mode detection, which the mobile WebView can't report. -->
+                <div class="mb-3" v-if="!isMobile">
                   <div class="form-check">
                     <input
                       type="checkbox"
@@ -234,7 +239,7 @@
                     </label>
                   </div>
                 </div>
-                <div class="mb-3" v-if="!settings.themeSync">
+                <div class="mb-3" v-if="isMobile || !settings.themeSync">
                   <label class="control-label" for="theme" style="width: 24ch">
                     {{ l('settings.theme.app') }}
                     <filterable-select
@@ -680,8 +685,9 @@
                   </div>
                 </div>
 
-                <h5>{{ l('settings.behavior.chat') }}</h5>
-                <div class="mb-3">
+                <!-- Log directory is fixed by the native shell on mobile; the folder picker can't run in the WebView. -->
+                <h5 v-if="!isMobile">{{ l('settings.behavior.chat') }}</h5>
+                <div class="mb-3" v-if="!isMobile">
                   <label class="control-label label-full" for="logDir">
                     {{ l('settings.logDir') }}
 
@@ -732,8 +738,9 @@
                     </a>
                   </div>
                 </div>
-                <h5>{{ l('settings.behavior.window') }}</h5>
-                <div class="mb-3">
+                <!-- Desktop window-frame settings: no tray, title bar or window controls on mobile. -->
+                <h5 v-if="!isMobile">{{ l('settings.behavior.window') }}</h5>
+                <div class="mb-3" v-if="!isMobile">
                   <div class="form-check">
                     <input
                       class="form-check-input"
@@ -747,7 +754,7 @@
                   </div>
                 </div>
 
-                <div class="mb-3">
+                <div class="mb-3" v-if="!isMobile">
                   <div class="form-check">
                     <input
                       class="form-check-input"
@@ -761,7 +768,7 @@
                   </div>
                 </div>
 
-                <div class="mb-3">
+                <div class="mb-3" v-if="!isMobile">
                   <div class="form-check">
                     <input
                       class="form-check-input"
@@ -783,7 +790,7 @@
                   </div>
                 </div>
 
-                <div class="mb-3">
+                <div class="mb-3" v-if="!isMobile">
                   <div class="form-check">
                     <input
                       class="form-check-input"
@@ -857,7 +864,8 @@
                 <h5>
                   {{ l('settings.system') }}
                 </h5>
-                <div class="mb-3">
+                <!-- Electron GPU/hardware-acceleration flag; not applicable to the mobile WebView. -->
+                <div class="mb-3" v-if="!isMobile">
                   <div class="form-check">
                     <input
                       class="form-check-input"
@@ -949,7 +957,8 @@
                   }}</small>
                 </div>
 
-                <h5>
+                <!-- Choosing an external browser to open links is desktop-only; mobile hands links to the OS. -->
+                <h5 v-if="!isMobile">
                   {{ l('settings.browserOptionTitle') }}
                 </h5>
                 <div class="warning" v-if="isMac">
@@ -961,7 +970,11 @@
                   <p>{{ l('settings.macLinkBug3') }}</p>
                 </div>
 
-                <label class="control-label label-full" for="browserPath">
+                <label
+                  class="control-label label-full"
+                  for="browserPath"
+                  v-if="!isMobile"
+                >
                   {{ l('settings.browserOptionPath') }}
 
                   <div class="input-group">
@@ -984,7 +997,11 @@
                     </button></div
                 ></label>
 
-                <label class="control-label label-full" for="browserArgs">
+                <label
+                  class="control-label label-full"
+                  for="browserArgs"
+                  v-if="!isMobile"
+                >
                   {{ l('settings.browserOptionArguments') }}
                   <div class="input-group">
                     <input
@@ -1132,6 +1149,9 @@
         //Which is kind of good because of all the security issues that'd otherwise arise
         isWindows: process.platform === 'win32',
         isMac: process.platform === 'darwin',
+        // Mobile (Android WebView) is detected the same way Chat.vue does it —
+        // the native shell sets this dataset flag before the app mounts.
+        isMobile: document.documentElement.dataset.mobilePlatform === 'true',
         platformName: process.platform,
         showTitle: false as boolean,
         // Currently selected sound theme metadata and per-sound volumes for the UI
@@ -1535,67 +1555,10 @@
 </script>
 
 <style lang="scss">
-  .card-full .window-modal {
-    position: relative;
-    display: block;
-  }
-  .window-modal .modal-dialog {
-    margin: 0px;
-    max-width: 100%;
-  }
-
-  .modal-title {
-    width: 100%;
-  }
-
-  .tab-content {
-    overflow: auto;
-  }
-
-  .modal-body {
-    height: 100%;
-    display: flex;
-    flex-flow: column;
-  }
-
-  textarea.textarea-code {
-    font-family: monospace;
-    resize: none;
-  }
-
-  /*This override exists because we allow the user to resize the window, which potentially resizes the footer otherwise*/
-  .modal-body .modal-footer {
-    height: 52px;
-    min-height: 52px;
-  }
-
-  .modal-footer {
-    padding-bottom: 1rem;
-  }
-
-  .modal-body .nav-tabs-scroll {
-    flex: 0 1 auto;
-    min-height: 42px;
-  }
-
-  .modal-body .tab-content {
-    overflow: auto;
-    flex: 1 1 auto;
-    padding-bottom: 1em;
-  }
-
-  .label-full {
-    width: 100%;
-  }
-
-  .custom-select {
-    width: 24ch;
-  }
-
-  .close {
-    z-index: 3;
-  }
-
+  // All of these rules are scoped under `.card-full` (this window's root, also
+  // shared by the About/Exporter/Changelog windows) so they don't leak into
+  // regular content modals — on mobile this whole component is mounted in the
+  // app, and a bare `.modal-body { display: flex }` was compressing every modal.
   .card-full {
     height: 100%;
     left: 0;
@@ -1603,18 +1566,79 @@
     top: 0;
     width: 100%;
     z-index: 100;
-  }
 
-  .card-body .form-group {
-    margin-left: 0;
-    margin-right: 0;
-  }
+    .window-modal {
+      position: relative;
+      display: block;
+    }
+    .window-modal .modal-dialog {
+      margin: 0px;
+      max-width: 100%;
+    }
 
-  .card-body .form-group .filters label {
-    display: list-item;
-    margin: 0;
-    margin-left: 5px;
-    list-style: none;
+    .modal-title {
+      width: 100%;
+    }
+
+    .tab-content {
+      overflow: auto;
+    }
+
+    .modal-body {
+      height: 100%;
+      display: flex;
+      flex-flow: column;
+    }
+
+    textarea.textarea-code {
+      font-family: monospace;
+      resize: none;
+    }
+
+    /*This override exists because we allow the user to resize the window, which potentially resizes the footer otherwise*/
+    .modal-body .modal-footer {
+      height: 52px;
+      min-height: 52px;
+    }
+
+    .modal-footer {
+      padding-bottom: 1rem;
+    }
+
+    .modal-body .nav-tabs-scroll {
+      flex: 0 1 auto;
+      min-height: 42px;
+    }
+
+    .modal-body .tab-content {
+      overflow: auto;
+      flex: 1 1 auto;
+      padding-bottom: 1em;
+    }
+
+    .label-full {
+      width: 100%;
+    }
+
+    .custom-select {
+      width: 24ch;
+    }
+
+    .close {
+      z-index: 3;
+    }
+
+    .card-body .form-group {
+      margin-left: 0;
+      margin-right: 0;
+    }
+
+    .card-body .form-group .filters label {
+      display: list-item;
+      margin: 0;
+      margin-left: 5px;
+      list-style: none;
+    }
   }
 
   #windowButtons .btn {
