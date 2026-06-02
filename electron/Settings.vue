@@ -1381,13 +1381,23 @@
             ].filter(Boolean);
             for (const format of formats) {
               const ext = format === 'mpeg' ? 'mp3' : format;
-              const abs = path.join(
-                __dirname,
-                'sound-themes',
-                this.settings.soundTheme,
-                `${soundPath}.${ext}`
-              );
-              pushSource(`file://${abs}`, `audio/${format}`);
+              if (this.isMobile) {
+                // In the WebView, __dirname isn't the asset dir, so a file:// path
+                // points at the filesystem root and fails. Load from the bundled
+                // assets via a relative URL, like the actual playback path does.
+                pushSource(
+                  `./sound-themes/${this.settings.soundTheme}/${soundPath}.${ext}`,
+                  `audio/${format}`
+                );
+              } else {
+                const abs = path.join(
+                  __dirname,
+                  'sound-themes',
+                  this.settings.soundTheme,
+                  `${soundPath}.${ext}`
+                );
+                pushSource(`file://${abs}`, `audio/${format}`);
+              }
             }
           } else {
             // Fallback: look for assets on disk in common locations

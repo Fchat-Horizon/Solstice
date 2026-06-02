@@ -68,6 +68,12 @@ try {
     (navigator as any).clipboard = nativeClipboard;
 }
 
+// notifications.ts loads sound themes via window.require('fs'/'path'), which only
+// exists in Electron. Expose the shimmed modules so themed sounds work in the WebView.
+//tslint:disable-next-line:no-require-imports no-any
+(window as any).require = (mod: string) =>
+    mod === 'fs' ? require('fs') : mod === 'path' ? require('path') : undefined;
+
 const connection = new Connection('Solstice (Mobile)', appVersion, Socket);
 initCore(connection, new GeneralSettings() as any, Logs, SettingsStore, Notifications);
 

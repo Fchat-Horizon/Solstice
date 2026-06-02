@@ -4,6 +4,7 @@ const { EsbuildPlugin } = require('esbuild-loader');
 const VueLoaderPlugin = require('vue-loader/lib/plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
+const CopyPlugin = require('copy-webpack-plugin');
 
 const config = {
   entry: {
@@ -120,6 +121,20 @@ const config = {
     new webpack.DefinePlugin({
       'process.versions': JSON.stringify({ node: '22.0.0' }),
       'process.version': JSON.stringify('v22.0.0'),
+    }),
+    // Bundle the sound-theme assets into www/sound-themes so the WebView can
+    // load themed sounds at ./sound-themes/<theme>/... (loaded by URL at runtime,
+    // so they aren't picked up by the module graph and must be copied).
+    new CopyPlugin({
+      patterns: [
+        {
+          from: path
+            .resolve(__dirname, '..', 'chat', 'sound-themes', '**', '*')
+            .replace(/\\/g, '/'),
+          to: path.join('sound-themes'),
+          context: path.resolve(__dirname, '..', 'chat', 'sound-themes'),
+        },
+      ],
     }),
   ],
   resolve: {
