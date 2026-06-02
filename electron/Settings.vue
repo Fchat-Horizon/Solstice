@@ -1691,4 +1691,30 @@
   .disableWindowsHighContrast * {
     forced-color-adjust: none;
   }
+
+  // Mobile: the settings tabs use fullWidth (Bootstrap `nav-justified`), which
+  // forces all six tabs to equal width and truncates their labels on a phone.
+  // Let the tab bar scroll horizontally at natural widths instead. Scoped to the
+  // mobile platform flag and the window root so desktop is unaffected.
+  html[data-mobile-platform='true'] .card-full {
+    .nav.nav-tabs {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .nav-tabs.nav-justified .nav-item,
+    .nav.nav-tabs .nav-item {
+      flex: 0 0 auto;
+    }
+
+    .nav-tabs .nav-link {
+      white-space: nowrap;
+    }
+
+    .nav-tab-spacer {
+      display: none;
+    }
+  }
 </style>

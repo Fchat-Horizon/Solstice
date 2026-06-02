@@ -64,7 +64,7 @@
     import Vue from 'vue';
     import Chat from '../chat/Chat.vue';
     import core from '../chat/core';
-    import l from '../chat/localize';
+    import l, {setLanguage} from '../chat/localize';
     import Socket from '../chat/WebSocket';
     import Modal from '../components/Modal.vue';
     import {SimpleCharacter} from '../interfaces';
@@ -184,6 +184,10 @@
             }
             if(settings.account.length > 0) this.saveLogin = true;
             this.settings = settings;
+            // Apply the saved UI language on startup (mirrors electron/chat.ts).
+            // Mobile's minimal GeneralSettings doesn't declare displayLanguage, but
+            // it survives persistence via _.merge, so read it dynamically.
+            setLanguage((settings as any).displayLanguage);
             (core.state as any).generalSettings = settings;
             (window as any).__generalSettings = settings;
             (window as any).__setGeneralSettings = setGeneralSettings;

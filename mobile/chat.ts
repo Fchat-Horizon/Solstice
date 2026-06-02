@@ -54,14 +54,18 @@ document.documentElement.dataset.mobilePlatform = 'true';
 // so shouldOverrideUrlLoading can intercept and handle them.
 (window as any).open = (url: string) => { window.location.href = url; return null; };
 
-// navigator.clipboard is undefined in the file:// (non-secure) WebView context,
-// so route clipboard access through the native bridge instead.
+// navigator.clipboard is unreliable in the file:// (non-secure) WebView context —
+// it may be absent, or present but permission-denied (NotAllowedError on write).
+// Always route clipboard access through the native bridge on mobile.
 declare const NativeClipboard: { writeText(text: string): void; readText(): string };
-if (!navigator.clipboard) {
-    (navigator as any).clipboard = {
-        writeText: (text: string) => { NativeClipboard.writeText(text); return Promise.resolve(); },
-        readText: () => Promise.resolve(NativeClipboard.readText())
-    };
+const nativeClipboard = {
+    writeText: (text: string) => { NativeClipboard.writeText(text); return Promise.resolve(); },
+    readText: () => Promise.resolve(NativeClipboard.readText())
+};
+try {
+    Object.defineProperty(navigator, 'clipboard', { value: nativeClipboard, configurable: true });
+} catch {
+    (navigator as any).clipboard = nativeClipboard;
 }
 
 const connection = new Connection('Solstice (Mobile)', appVersion, Socket);
