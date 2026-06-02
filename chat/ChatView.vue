@@ -1225,9 +1225,11 @@
           const channelMenuEl = (channelMenu as any).$el as HTMLElement | null;
           const channelGroupMenuEl = (channelGroupMenu as any)
             .$el as HTMLElement | null;
+          const userMenuEl = (userMenu as any).$el as HTMLElement | null;
           if (!(target && channelMenuEl?.contains(target))) channelMenu.close();
           if (!(target && channelGroupMenuEl?.contains(target)))
             channelGroupMenu.close();
+          if (!(target && userMenuEl?.contains(target))) userMenu.close();
         }
 
         userMenu.handleEvent(e);

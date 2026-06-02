@@ -15,7 +15,7 @@
       }"
       :style="item.topBorder ? { borderTopWidth: '1px' } : undefined"
       @mouseenter="item.children?.length ? positionChild($event) : undefined"
-      @click.prevent="onItemClick(item, index)"
+      @click="onItemClick(item, index, $event)"
     >
       <span v-if="item.iconClass" :class="item.iconClass" class="fa-fw"></span>
       <span class="action-label">{{ item.label }}</span>
@@ -105,14 +105,37 @@
       }
     },
     methods: {
-      onItemClick(item: ContextMenuItemProps, index: number): void {
-        if (item.disabled) return;
+      onItemClick(item: ContextMenuItemProps, index: number, e: Event): void {
+        if (item.disabled) {
+          e.preventDefault();
+          return;
+        }
+        // Mobile: tapping a parent item toggles its inline submenu (no hover).
         if (this.isMobilePlatform && item.children?.length) {
+          e.preventDefault();
           this.activeChildIndex =
             this.activeChildIndex === index ? null : index;
           return;
         }
-        item.onClick?.();
+        if (item.onClick) {
+          e.preventDefault();
+          item.onClick();
+          return;
+        }
+        if (item.href) {
+          // A real link (e.g. the profile item). In the WebView, target="_blank"
+          // won't open (no multi-window support), so route it through window.open
+          // — which the native shell handles — and dismiss the menu. On desktop,
+          // let the default <a href target="_blank"> navigation happen.
+          if (this.isMobilePlatform) {
+            e.preventDefault();
+            window.open(item.href, '_blank');
+            this.$emit('close');
+          }
+          return;
+        }
+        // No handler and no real href (just an "#" anchor): never navigate.
+        e.preventDefault();
       },
       positionChild(event: MouseEvent): void {
         const item = event.currentTarget as HTMLElement;

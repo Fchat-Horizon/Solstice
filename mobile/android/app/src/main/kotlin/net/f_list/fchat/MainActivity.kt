@@ -30,6 +30,7 @@ import java.io.FileOutputStream
 import java.net.URLDecoder
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import org.json.JSONObject
 
 
 class MainActivity : Activity() {
@@ -39,6 +40,10 @@ class MainActivity : Activity() {
 	private var debugPressed = 0
 	private val debugHandler = Handler(Looper.getMainLooper())
 	private var filePathCallback: ValueCallback<Array<Uri>>? = null
+
+	private fun jsQuote(value: String?): String {
+		return value?.let { JSONObject.quote(it) } ?: "null"
+	}
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -124,7 +129,7 @@ class MainActivity : Activity() {
 				val match = profileRegex.find(url)
 				if(match != null) {
 					val char = URLDecoder.decode(match.groupValues[2], "UTF-8")
-					webView.evaluateJavascript("document.dispatchEvent(new CustomEvent('open-profile',{detail:'$char'}))", null)
+					webView.evaluateJavascript("document.dispatchEvent(new CustomEvent('open-profile',{detail:${jsQuote(char)}}))", null)
 				} else {
 					var uri = Uri.parse(url)
 					if(uri.scheme == "profile") uri = Uri.parse("https://www.f-list.net/c/${uri.authority}")
@@ -209,7 +214,7 @@ class MainActivity : Activity() {
 		super.onNewIntent(intent)
 		if(intent.action == "notification") {
 			val data = intent.extras?.getString("data")
-			webView.evaluateJavascript("document.dispatchEvent(new CustomEvent('notification-clicked',{detail:{data:'$data'}}))", null)
+			webView.evaluateJavascript("document.dispatchEvent(new CustomEvent('notification-clicked',{detail:{data:${jsQuote(data)}}}))", null)
 		}
 	}
 
@@ -233,9 +238,10 @@ class MainActivity : Activity() {
 					// Read bytes and base64-encode for safe JS delivery
 					val bytes = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
 					val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-					val safeName = fileName.replace("\\", "\\\\").replace("'", "\\'")
+					val safeB64 = JSONObject.quote(b64)
+					val safeName = JSONObject.quote(fileName)
 					webView.evaluateJavascript(
-						"window.__mobileFilePicker && window.__mobileFilePicker('$b64','$safeName')",
+						"window.__mobileFilePicker && window.__mobileFilePicker($safeB64,$safeName)",
 						null
 					)
 				} catch (e: Exception) {

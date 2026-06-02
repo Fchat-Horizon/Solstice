@@ -7,6 +7,7 @@
       v-if="character && showContextMenu"
       style="position: fixed; display: block; min-width: 220px; z-index: 1100"
       ref="menu"
+      @close="close"
     >
       <div
         style="min-height: 65px; overflow: auto"
@@ -339,6 +340,7 @@
         if (!this.showContextMenu) return;
         document.removeEventListener('click', this.closeOnOutsideClick);
         this.showContextMenu = false;
+        this.touchedElement = undefined;
         this.$emit('close');
       },
       closeOnOutsideClick(e: MouseEvent): void {
