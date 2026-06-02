@@ -489,6 +489,11 @@ const commands: { readonly [key: string]: Command | undefined } = {
     exec: (conv: Conversation) =>
       (conv.infoText = elf[Math.floor(Math.random() * elf.length)]),
     documented: false
+  },
+  history: {
+    exec: (conv: Conversation) =>
+      (conv.infoText = '[eicon]senpaino[/eicon] No~'),
+    documented: false
   }
 };
 

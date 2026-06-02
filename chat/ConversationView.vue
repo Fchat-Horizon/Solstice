@@ -383,10 +383,10 @@
           style="cursor: pointer"
           @click.stop="conversation.infoText = ''"
         ></span>
-        <bbcode-ui
+        <bbcode
           :text="conversation.infoText"
           style="flex: 1; margin-left: 5px"
-        ></bbcode-ui>
+        ></bbcode>
       </div>
       <div v-show="conversation.errorText" class="chat-info-text">
         <span
