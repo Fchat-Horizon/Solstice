@@ -215,6 +215,35 @@
                     </div>
                   </div>
                 </template>
+
+                <!-- Mobile: no auto-installer; Solstice checks GitHub for new
+                     releases on launch and shows a download banner. -->
+                <template v-if="isMobile">
+                  <h5>
+                    {{ l('settings.updates') }}
+                  </h5>
+                  <div class="mb-3">
+                    <div class="form-check">
+                      <input
+                        type="checkbox"
+                        id="updateCheckPrereleases"
+                        v-model="settings.updateCheckPrereleases"
+                        class="form-check-input"
+                      />
+                      <label
+                        class="form-check-label"
+                        for="updateCheckPrereleases"
+                      >
+                        Notify me about pre-release (beta) versions
+                      </label>
+                    </div>
+                    <div class="form-text text-muted">
+                      Solstice checks GitHub for new releases when it starts.
+                      Stable releases are always included; enable this to also
+                      be notified about betas.
+                    </div>
+                  </div>
+                </template>
               </div>
               <!--Appearance-->
               <div

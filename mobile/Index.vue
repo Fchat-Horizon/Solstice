@@ -1,6 +1,7 @@
 <template>
     <div id="page" style="position: relative; padding: 10px;" v-if="settings">
         <div v-html="styling"></div>
+        <update-banner></update-banner>
         <div v-if="!characters" style="display:flex; align-items:center; justify-content:center; min-height: 100%;">
             <div class="card bg-light" style="width: 400px;">
                 <h3 class="card-header" style="margin-top:0">{{l('title')}}</h3>
@@ -72,6 +73,7 @@
     import {appVersion, GeneralSettings, getGeneralSettings, setGeneralSettings, SettingsStore} from './filesystem';
     import AppSettingsDialog from './AppSettingsDialog.vue';
     import AppExporterDialog from './AppExporterDialog.vue';
+    import UpdateBanner from './UpdateBanner.vue';
     import { EventBus } from '../chat/preview/event-bus';
 
     declare global {
@@ -88,7 +90,7 @@
     }
 
     export default Vue.extend({
-        components: {chat: Chat, modal: Modal, characterPage: CharacterPage, 'app-settings-dialog': AppSettingsDialog, 'app-exporter-dialog': AppExporterDialog},
+        components: {chat: Chat, modal: Modal, characterPage: CharacterPage, 'app-settings-dialog': AppSettingsDialog, 'app-exporter-dialog': AppExporterDialog, 'update-banner': UpdateBanner},
         data() {
             return {
                 showAdvanced: false,

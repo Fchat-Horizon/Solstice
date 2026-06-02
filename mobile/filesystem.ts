@@ -40,6 +40,8 @@ export class GeneralSettings {
     version = appVersion;
     use12HourTime = false;
     showSeconds = false;
+    // Whether the in-app update check should also surface prereleases (betas).
+    updateCheckPrereleases = false;
 }
 
 type Index = {[key: string]: {name: string, dates: number[]} | undefined};
