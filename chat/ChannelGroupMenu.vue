@@ -115,6 +115,7 @@
             dangerous: true,
             onClick: () => {
               if (
+                (this.channelGroup && this.channelGroup?.channels.length < 1) ||
                 Dialog.confirmDialog(
                   l(
                     'channel.group.delete.confirm',

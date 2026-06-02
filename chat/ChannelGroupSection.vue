@@ -272,6 +272,7 @@
       deleteGroup(e: MouseEvent) {
         if (
           e.getModifierState('Shift') ||
+          this.group.channels.length < 1 ||
           Dialog.confirmDialog(
             l('channel.group.delete.confirm', this.group.name || '')
           )

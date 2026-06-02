@@ -883,6 +883,7 @@
   "settings.profile.ignoredList.empty": "No estás ignorando a ningún personaje actualmente.",
   "settings.profile.viewer": "Visor de Perfil",
   "settings.profileViewer": "Usar visor de perfil",
+  "settings.profileViewer.smallerDefaultAvatars": "Reducir los avatares por defecto (no personalizados) a su tamaño real.",
   "settings.profileViewerGalleryType": "Tipo de galería",
   "settings.profileViewerGalleryType.full": "Completo",
   "settings.profileViewerGalleryType.hover": "Al pasar el ratón",

@@ -182,18 +182,11 @@
 
         const items: ContextMenuItemProps[] = [];
 
-        const showProfile = () => {
-          if (this.profileLink) {
-            window.open(this.profileLink, '_blank');
-          }
-          this.close();
-        };
-
         if (this.showProfileFirst) {
           items.push({
             label: this.l('user.profile'),
-            iconClass: 'fa fa-fw fa-user',
-            onClick: showProfile
+            iconClass: 'fa fa-fw fa-address-card',
+            href: this.profileLink
           });
         }
 
@@ -220,7 +213,7 @@
           items.push({
             label: this.l('user.profile'),
             iconClass: 'fas fa-fw fa-address-card',
-            onClick: showProfile
+            href: this.profileLink
           });
         }
 

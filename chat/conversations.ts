@@ -1,5 +1,5 @@
 import { queuedJoin } from '../fchat/channels';
-import { decodeHTML } from '../fchat/common';
+import { decodeHTML, emptyMap, toMap } from '../fchat/common';
 import { AdManager } from './ads/ad-manager';
 import {
   characterImage,
@@ -770,8 +770,8 @@ class ConsoleConversation extends Conversation {
 class State implements Interfaces.State {
   privateConversations: PrivateConversation[] = [];
   channelConversations: ChannelConversation[] = [];
-  privateMap: { [key: string]: PrivateConversation | undefined } = {};
-  channelMap: { [key: string]: ChannelConversation | undefined } = {};
+  privateMap: { [key: string]: PrivateConversation | undefined } = emptyMap();
+  channelMap: { [key: string]: ChannelConversation | undefined } = emptyMap();
   consoleTab!: ConsoleConversation;
   selectedConversation: Conversation = this.consoleTab;
   lastConversation: Conversation = this.selectedConversation;
@@ -783,7 +783,7 @@ class State implements Interfaces.State {
   channelGroups: Interfaces.ChannelGroup[] = [];
 
   get channelGroupAssignments(): { [channelId: string]: string } {
-    const map: { [id: string]: string } = {};
+    const map: { [id: string]: string } = emptyMap();
     for (const g of this.channelGroups)
       for (const id of g.channels) map[id] = g.id;
     return map;
@@ -982,17 +982,18 @@ class State implements Interfaces.State {
       private: [],
       channels: []
     };
-    this.modes = (await core.settingsStore.get('modes')) || {};
+    this.modes = toMap(await core.settingsStore.get('modes'));
     for (const conversation of this.privateConversations)
       conversation._isPinned =
         this.pinned.private.indexOf(conversation.name) !== -1;
     this.recent = (await core.settingsStore.get('recent')) || [];
     this.recentChannels =
       (await core.settingsStore.get('recentChannels')) || [];
-    const settings =
+    const settings = toMap(
       <{ [key: string]: ConversationSettings }>(
         await core.settingsStore.get('conversationSettings')
-      ) || {};
+      )
+    );
     for (const key in settings) {
       settings[key] = Object.assign(new ConversationSettings(), settings[key]);
       const conv = this.byKey(key);
@@ -1249,11 +1250,11 @@ export default function (this: any): Interfaces.State {
   const connection = core.connection;
   connection.onEvent('connecting', async isReconnect => {
     state.channelConversations = [];
-    state.channelMap = {};
+    state.channelMap = emptyMap();
     if (!isReconnect) {
       state.consoleTab = new ConsoleConversation();
       state.privateConversations = [];
-      state.privateMap = {};
+      state.privateMap = emptyMap();
     } else state.consoleTab.unread = Interfaces.UnreadState.None;
     state.selectedConversation = state.consoleTab;
     EventBus.$emit('select-conversation', {
