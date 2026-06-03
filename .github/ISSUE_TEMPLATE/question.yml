@@ -1,5 +1,5 @@
 name: Question
-description: Ask a question about using Horizon.
+description: Ask a question about using Solstice.
 labels: ['help wanted']
 body:
   - type: textarea
@@ -13,8 +13,8 @@ body:
     id: version-info
     attributes:
       label: Version Information
-      description: If applicable, please provide the version of Horizon you are using.
-      placeholder: In the app menu, go to Horizon > About Horizon, click "Copy Version Info" and paste it here.
+      description: If applicable, please provide the version of Solstice you are using.
+      placeholder: Please provide your Solstice version (e.g. 2.2.0-beta.3) and your Android version.
   - type: textarea
     id: additional-context
     attributes:
