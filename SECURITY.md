@@ -1,14 +1,16 @@
 # Security Policy
 
-So you've found a security vulnerability in Horizon? This is where you should be.
+So you've found a security vulnerability in Solstice? This is where you should be.
 
 ## Supported Versions
 
-Only the **latest release** of Horizon receives security fixes. Please verify the issue is reproducible on the latest version before reporting.
+Only the **latest release** of Solstice receives security fixes. Please verify the issue is reproducible on the latest version before reporting.
 
 ## Reporting a Vulnerability
 
-### Vulnerabilities that only impact Horizon
+### Vulnerabilities that impact Solstice or Horizon
+
+Solstice is a mobile fork of Horizon and shares most of its codebase. Vulnerabilities in shared code are handled by the Horizon maintainers.
 
 Email: `dev@horizn.moe`
 
@@ -30,8 +32,7 @@ Please **do not** publicly disclose the vulnerability until a patch is released 
 
 - A clear description of the vulnerability and potential impact
 - Reproduction steps or proof of concept (if safe to share)
-- Affected OS(es)
-- OS version(s)
-- Installation method
-- Tested Horizon versions (including any 3.0 versions, if applicable)
+- Your Android version and device model
+- Installation method (e.g. APK from releases)
+- Tested Solstice versions (including any Horizon or F-Chat 3.0 versions, if applicable)
 - Any mitigations or workarounds discovered

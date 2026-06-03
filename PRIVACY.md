@@ -44,14 +44,13 @@ If you are concerned about your security or privacy, consider disabling the high
 
 ## Locally Stored Data
 
-Horizon stores data on your computer. This data contains conversation logs, settings, cache, and other
-information such as custom dictionary words. By default, the data is stored in:
+Solstice stores data on your device. This data contains conversation logs, settings, cache, and other
+information. The data is kept in Solstice's app-private storage, which is not accessible to other apps
+and is removed when you uninstall the app:
 
-| **Operating System** | **Data Path**                                    |
-| :------------------- | :----------------------------------------------- |
-| Windows              | `%AppData%\horizon-electron`                     |
-| MacOS                | `~/Library/Application Support/horizon-electron` |
-| Linux                | `~/.config/horizon-electron`                     |
+| **Platform** | **Data Path**                                                          |
+| :----------- | :--------------------------------------------------------------------- |
+| Android      | `/data/data/net.f_list.solstice/` (the app's private internal storage) |
 
-F-List account usernames and passwords are stored in a secure datastore provided by your operating system.
-For more information, see [electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage).
+F-List account usernames and passwords are stored in the app's private storage and are never shared
+with any party other than `f-list.net`.

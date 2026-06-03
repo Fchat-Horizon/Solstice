@@ -1,8 +1,8 @@
 {
   "name": "fchat-solstice",
   "version": "2.2.0-beta.3",
-  "author": "The F-List Team and Horizon Contributors",
-  "description": "A heavily modded FChat 3.0 client for F-List, continued from Rising",
+  "author": "The F-List Team, Horizon Contributors, and Solstice Contributors",
+  "description": "A fork of F-Chat Horizon for Android.",
   "private": true,
   "license": "MPL-2.0",
   "main": "main.js",
@@ -81,7 +81,6 @@
     "electron-squirrel-startup": "^1.0.1"
   },
   "scripts": {
-    "__removed__postinstall": "electron-rebuild --prebuild-tag-prefix=ignoreprebuilds -f -o keytar",
     "build": "pnpm --filter solstice-electron build",
     "build:dist": "pnpm --filter solstice-electron build:dist",
     "watch": "pnpm --filter solstice-electron watch",

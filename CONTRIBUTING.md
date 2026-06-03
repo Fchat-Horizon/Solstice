@@ -1,23 +1,26 @@
-# Contributing to Horizon
+# Contributing to Solstice
 
-Before we begin, I'd like to thank you for taking interest in contributing! Horizon is a small-time side hobby, so any help is greatly appreciated.
+Before we begin, I'd like to thank you for taking interest in contributing! Solstice is a small-time side hobby, so any help is greatly appreciated.
 
-That being said, _Horizon is an opinionated fork_, and as such we enforce strong code quality standards. You can read more about this on this page.
+Solstice is the **mobile (Android) fork of [Horizon](https://github.com/Fchat-Horizon/Horizon)**, itself a continuation of F-Chat Rising. It is a deliberately _light_ fork: we track Horizon closely and pull its changes in regularly. We generally **merge what works, fix what breaks.** Please keep this in mind when contributing, see [Working with upstream](#working-with-upstream) below.
 
 ## Table of Contents <!-- omit in toc -->
 
-- [Contributing to Horizon](#contributing-to-horizon)
+- [Contributing to Solstice](#contributing-to-solstice)
+  - [Contributor License Agreement](#contributor-license-agreement)
   - [Where do I start?!](#where-do-i-start)
     - [Technology](#technology)
     - [Setting up your development enviroment](#setting-up-your-development-enviroment)
+      - [Nix](#nix)
     - [Building](#building)
-      - [Electron](#electron)
-      - [Mobile](#mobile)
-    - [Project layout](#project-layout)
-      - [Branches](#branches)
-      - [Tags](#tags)
+      - [Mobile (Android)](#mobile-android)
+      - [Electron (shared upstream code)](#electron-shared-upstream-code)
+  - [Working with upstream](#working-with-upstream)
+    - [Mobile divergences from Horizon](#mobile-divergences-from-horizon)
+  - [Project layout](#project-layout)
+    - [Branches](#branches)
+    - [Tags](#tags)
   - [Style guidelines](#style-guidelines)
-  - [Packaging and installing](#packaging-and-installing)
 
 ## Contributor License Agreement
 
@@ -27,23 +30,21 @@ In short: you keep ownership of your code, but you grant the project lead the ri
 
 ## Where do I start?!
 
-You wish to add a new feature to Horizon, or fix that one bug that's been pissing you off for months? Then this guide'll give you the rundown.
+You wish to add a new feature to Solstice, or fix that one bug that's been pissing you off for months? Then this guide'll give you the rundown.
 
 ### Technology
 
-Horizon is written primarily in _Vue_, _Typescript_, and _Javascript._ You'll need **[Node.js](https://nodejs.org/en/download)**, **[PNPM](https://pnpm.io/installation)**, and **[NVM](https://github.com/nvm-sh/nvm)** (or a similar node version manager, such as fnm). You might also want to consider using VScode to integrate with prettier.
+Solstice is written primarily in _Vue_, _Typescript_, and _Javascript_, wrapped in a native Android WebView. You'll need **[Node.js](https://nodejs.org/en/download)** (v24+) and **[PNPM](https://pnpm.io/installation)**. A node version manager such as **[NVM](https://github.com/nvm-sh/nvm)** or fnm is recommended. You might also want to use VSCode to integrate with prettier.
 
-You should use Node.js **v22.18.0**.
-
-If you intend on _packaging_ for MacOS, you need to install **Xcode 26+** or the build will fail with a error when packing into the desired format. **This includes the Xcode CLI tools**.
+For Android builds you'll additionally need **JDK 17+** and the **Android SDK** (API 35 platform). [Android Studio](https://developer.android.com/studio) is the easiest way to get the SDK.
 
 ### Setting up your development enviroment
 
 In short, you can run the following commands:
 
 ```sh
-git clone https://github.com/Fchat-Horizon/Horizon.git
-cd Horizon
+git clone https://github.com/Fchat-Horizon/Solstice.git
+cd Solstice
 pnpm install
 ```
 
@@ -55,7 +56,7 @@ If you're using [Nix](https://nixos.org/)— whether as a package manager or as 
 nix develop
 ```
 
-Note that as of writing, the package `sass-embedded` is still required and doesn't directly work inside the Nix shell (because it's its own distributed binary). The Nix flake comes with its own patcher method that solve this, though you do need to run it every time you reinstall the PNPM packages:
+Note that as of writing, the package `sass-embedded` is still required and doesn't directly work inside the Nix shell (because it's its own distributed binary). The Nix flake comes with its own patcher method that solves this, though you do need to run it every time you reinstall the PNPM packages:
 
 ```bash
 pnpm install
@@ -64,83 +65,78 @@ patch_sass_embed
 
 ### Building
 
-#### Electron
+#### Mobile (Android)
 
-Run the following commands,
+This is the primary build. Compile the web assets (they're emitted to `mobile/www/`):
 
-**For development:**
-
+```sh
+pnpm run build:mobile:dist
 ```
-pnpm build
+
+Then build the Android APK (Gradle copies the web assets automatically):
+
+```sh
+cd mobile/android
+./gradlew assembleDebug
+```
+
+The APK will be at `mobile/android/app/build/outputs/apk/debug/app-debug.apk`. For a release build use `./gradlew assembleRelease` (you'll need to configure signing in `app/build.gradle`). Alternatively, open `mobile/android/` in Android Studio and build from there.
+
+For an iterative workflow, `pnpm run watch:mobile` rebuilds the web assets on change.
+
+#### Electron (shared upstream code)
+
+Solstice keeps Horizon's `/electron` desktop code in-tree so that upstream merges remian simple. The mobile build strips it out via webpack shims (see [Mobile divergences](#mobile-divergences-from-horizon)). You generally don't need to build the desktop app, but it can be useful for testing shared chat/UI code:
+
+```sh
+pnpm build       # builds the solstice-electron workspace
 pnpm start
 ```
 
-Tip: this repo uses a pnpm workspace, so you can target subprojects with filters:
+This repo is a pnpm workspace, so you can target subprojects with filters, e.g. `pnpm --filter solstice-electron build` or `pnpm --filter solstice-mobile build`.
 
-```
-pnpm --filter horizon-electron build
-pnpm --filter horizon-electron start
-pnpm build:all
-```
+## Working with upstream
 
-**For distribution:**
+Solstice is a soft fork. The golden rule: **avoid editing upstream-tracked code unless you have to.** Every change to a file that Horizon also maintains becomes a merge conflict the next time we pull upstream.
 
-> [!NOTE]
-> While you can choose to build for OSes, it **will** fail if you attempt to build on a OS that's different from your own.
->
-> Please read the [electron-builder](https://www.electron.build/multi-platform-build.html) wiki for more info. If you're a kickass electron dev, please make a pull request to fix this.
+- **Free to edit** (Solstice-owned, no merge cost): `mobile/`, `.github/` templates and workflows, `scripts/`, `bump_version.sh`, and root `package.json` metadata.
+- **Avoid editing** (merge-tracked from Horizon): `chat/`, `electron/`, `learn/`, `scss/`, `fchat/`, `bbcode/`, `components/`, `site/`, `assets/`.
 
-Read [the electron README.md](./electron/README.md) for more info.
+When a mobile fix genuinely requires touching shared code, keep the change as small and surgical as possible so future merges resolve cleanly.
 
-#### Mobile
+### Mobile divergences from Horizon
 
-Mobile builds are currently unsupported, but if you're up to the challenge, _maybe you can fix it?_
+Solstice deliberately diverges from Horizon in only a handful of places. If you're new to the project, these are the important ones to understand:
 
-Look at the `mobile` directory for more info. For `android`, we recommend you use android studio to make your life more pleasent.
+- **Settings entry point**: On mobile there is no top menu bar, so the desktop Settings window is unreachable. `mobile/AppSettingsDialog.vue` mounts the desktop `Settings.vue` inside a modal overlay to give mobile users a way in.
+- **Trimmed EIcon category buttons**: The EIcon viewer's category buttons are trimmed down so the search bar fits on a phone screen (see commit `606917b7`).
+- **Desktop-code stripping**: `mobile/webpack.config.js` aliases Electron/desktop-only modules (`electron`, `electron-log`, `@electron/remote`, `archiver`, `electron/filesystem`, `learn/store/worker`) to no-op shims in `mobile/shims/`, and disables Node `fs`/`tls`/`net` fallbacks. This is what lets the shared `chat/`, `learn/`, and `electron/` code bundle for mobile without an Electron runtime, and it's why we can keep `/electron` in-tree without it bloating the mobile build.
 
-I've completely deleted the `ios` directory, and have no intention to support ios at this time. However, for those interested, the `ios` directory was removed in [this commit](https://github.com/Fchat-Horizon/Horizon/commit/41261d1ba7043eb7dfd5a1a6331dc604ff338814), and you're more then welcome to restore it.
+## Project layout
 
-### Project layout
+### Branches
 
-#### Branches
+- **main**: Production-ready. All stable releases are tagged here.
+- **beta**: The 'semi-stable' branch. Development is merged into beta when stable enough for a pre-release.
+- **development**: The main integration branch. New features and fixes are first merged here.
+- **feature/\***: For new features, branch off `development` and open a PR back into it.
+- **hotfix/\***: For urgent production fixes, branch off `main`, then merge back into both `main` and `development`.
 
-- **main**  
-  This is the production-ready branch. All stable releases are tagged on this branch.
-
-- **beta**
-  The 'semi-stable' branch. Development is merged into beta when it is stable enough for a pre-release.
-
-- **develop**  
-  The main integration branch. New features and fixes are first merged into develop.
-
-- **feature/\***  
-  For new features, create a branch named `feature/your-feature-name` off of develop. Once finalized, open a PR to merge into develop.
-
-- **hotfix/\***  
-  For urgent fixes on production, create a branch named `hotfix/description` off of main, then merge back into both main and develop after the fix.
-
-- **experimental/\*** (optional)  
-  For experimental changes that may not be merged immediately, create branches with the prefix `experimental/`.
-
-#### Tags
+### Tags
 
 We follow a [semantic versioning](https://semver.org) format:
 
-- **vX.Y.Z**  
-  Represents a production-ready release. For example: `v1.0.0`
-- **vX.Y.Z-DEV-X.Y**  
-  Early, often unstable releases. Also known as _Canary_ in **Rising**. Doesn't leave the development branch.
-- **vX.Y.Z-BETA-X.Y**  
-  A pre-release version that's intended for testing before the final release.
-- **vX.Y.Z-rc-X.Y**  
-  A release candidate version. This indicates a near-final release version. No new features should be added to RCs.
+- **vX.Y.Z**: A production-ready release. For example: `v1.0.0`
+- **vX.Y.Z-DEV-X.Y**: Early, often unstable releases. Doesn't leave the development branch.
+- **vX.Y.Z-BETA-X.Y**: A pre-release version intended for testing before the final release.
+- **vX.Y.Z-rc-X.Y**: A release candidate. Near-final; no new features should be added to RCs.
 
 ## Style guidelines
 
 We use [Prettier](https://prettier.io/) to enforce a consistent coding style. Please follow these guidelines:
 
 1. **Formatting**
-   - Run `prettier --write .` (or use the lint-staged integration) before committing. This ensures all code is consistent with [.prettierrc](./.prettierrc).
+   - Run `pnpm run lint` (or use the lint-staged integration) before committing. This ensures all code is consistent with [.prettierrc](./.prettierrc).
    - Use 2 spaces for indentation.
    - Keep a maximum line length of 80 characters.
    - Declare strings with single quotes (') instead of double quotes (").
@@ -154,39 +150,4 @@ We use [Prettier](https://prettier.io/) to enforce a consistent coding style. Pl
    - Ensure `<script>` and `<style>` in `.vue` files are properly indented.
    - Follow the [Vue style guide](https://v2.vuejs.org/v2/style-guide) to the best of your ability.
 
-A important part of Horizon is a strict code quality standard. Prettier should do most of the work for you.
-
-## Packaging and installing
-
-> [!NOTE]
-> This section assumes you have already set up the build tools and dependencies from earlier in this document.
-
-1. Install PNPM packages:
-
-```bash
-pnpm install
-```
-
-2. (Optional) Make any changes you need to the code and test.
-
-3. Build a production build of the Electron app:
-
-```bash
-pnpm build:dist
-```
-
-Note that this does not build a distributable or installable release yet, this just leaves the transpiled scripts and compiled binaries in the build output directories. You'll still need the next step if you want to distribute or install it properly.
-
-4. Run the build/ package script:
-
-```bash
-node electron/build/build.mjs --os <linux|windows|macos> <options>
-```
-
-The options for the build script are quite varied, and thus won't be elaborated on here. You can select the kind of package, system architecture, etc. For more details, run the script with the help flag:
-
-```bash
-node electron/build/build.mjs -h
-```
-
-See also the [README](./electron/README.md) file for the Electron sub-project.
+A important part of Solstice is a strict code quality standard. Prettier should do most of the work for you.

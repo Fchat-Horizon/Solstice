@@ -1,7 +1,6 @@
 name: Bug Report
 description: File a bug report.
 labels: ['bug']
-projects: ['FChat-Horizon/Horizon']
 type: bug
 body:
   - type: textarea
@@ -15,7 +14,7 @@ body:
     id: version-info
     attributes:
       label: Version Information
-      placeholder: In the app menu, go to Horizon > About Horizon, click \"Copy Version Info\" and paste it here.
+      placeholder: Please provide your Solstice version (e.g. 2.2.0-beta.3) and your Android version.
     validations:
       required: true
   - type: textarea
