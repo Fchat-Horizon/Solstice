@@ -77,25 +77,34 @@ final class LogsRoundTripTests: XCTestCase {
     func testRepairRebuildsIndexAndTruncatesCorruption() throws {
         let character = "RepairChar"
         let key = "c"
+        let time = 1_700_000_000
         let logs = NativeLogs(root: root)
         _ = logs.initLogs(character)
-        logs.logMessage(key: key, conversation: "X", time: 1_700_000_000, type: 0, sender: "A", text: "ok")
+        logs.logMessage(key: key, conversation: "X", time: time, type: 0, sender: "A", text: "ok")
 
-        // Append garbage and delete the index, then repair.
         let logsDir = root.appendingPathComponent("\(character)/logs")
         let dataURL = logsDir.appendingPathComponent(key)
-        let valid = try Data(contentsOf: dataURL)
-        var corrupted = valid
-        corrupted.append(contentsOf: [0xDE, 0xAD, 0xBE, 0xEF, 0x00])
-        try corrupted.write(to: dataURL)
-        try FileManager.default.removeItem(at: logsDir.appendingPathComponent("\(key).idx"))
+        let idxURL = logsDir.appendingPathComponent("\(key).idx")
+        let validData = try Data(contentsOf: dataURL)
+
+        // Realistic corruption: the .idx is present but stale, and the data file has a
+        // trailing partial/garbage record. repair() re-derives both from the valid records.
+        var corruptData = validData
+        corruptData.append(contentsOf: [0xDE, 0xAD, 0xBE, 0xEF, 0x00])
+        try corruptData.write(to: dataURL)
+        var corruptIdx = try Data(contentsOf: idxURL)
+        corruptIdx.append(contentsOf: [0xFF, 0xFF])
+        try corruptIdx.write(to: idxURL)
 
         logs.repair()
 
-        let repaired = try Data(contentsOf: dataURL)
-        XCTAssertEqual(repaired, valid, "repair should truncate trailing corruption")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: logsDir.appendingPathComponent("\(key).idx").path),
-                      "repair should rebuild the index file")
+        XCTAssertEqual(try Data(contentsOf: dataURL), validData, "repair should truncate trailing corruption")
+
+        var expectedIdx = Data()
+        expectedIdx.append(1)               // name length
+        expectedIdx.append(Data("X".utf8))  // conversation name
+        expectedIdx.append(idxEntry(day: time / 86400, offset: 0))
+        XCTAssertEqual(try Data(contentsOf: idxURL), expectedIdx, "repair should rebuild the index")
     }
 
     // MARK: - Helpers
