@@ -111,26 +111,37 @@
 
                     // Override chooseImportZip: showOpenDialog is not available on mobile.
                     // We trigger the system file picker via a hidden file input (which fires
-                    // onShowFileChooser in Kotlin). Kotlin reads the file via contentResolver
-                    // and delivers base64 content back through window.__mobileFilePicker,
-                    // bypassing the unreliable WebView content URI → FileReader path entirely.
+                    // onShowFileChooser in Kotlin). Kotlin copies the file to filesDir and
+                    // passes the temp filename through window.__mobileFilePicker. The zip is
+                    // then read in 4 MB chunks via NativeFile.readBytes to avoid the OOM crash
+                    // that a single base64 evaluateJavascript call caused on large archives.
                     vm.chooseImportZip = () => {
                         if (vm.importInProgress) return;
-                        (window as any).__mobileFilePicker = (b64: string | null, fileName: string | null) => {
+                        (window as any).__mobileFilePicker = async (tmpName: string | null, fileName: string | null) => {
                             (window as any).__mobileFilePicker = undefined;
-                            if (!b64 || !fileName) {
+                            if (!tmpName || !fileName) {
                                 vm.importZipError = "Couldn't read the selected file.";
                                 return;
                             }
                             try {
-                                // Decode base64 → Uint8Array → Buffer without FileReader
-                                const binary = atob(b64);
-                                const bytes = new Uint8Array(binary.length);
-                                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-                                const zip = new AdmZip(Buffer.from(bytes));
+                                // Read the zip in 4 MB chunks to avoid allocating one giant
+                                // base64 string through evaluateJavascript.
+                                const CHUNK = 4 * 1024 * 1024;
+                                const fileSize: number = NativeFile.getSize(tmpName);
+                                const buf = Buffer.allocUnsafe(fileSize);
+                                let offset = 0;
+                                while (offset < fileSize) {
+                                    const chunkLen = Math.min(CHUNK, fileSize - offset);
+                                    const b64chunk: string = NativeFile.readBytes(tmpName, offset, chunkLen);
+                                    const decoded = Buffer.from(b64chunk, 'base64');
+                                    decoded.copy(buf, offset);
+                                    offset += decoded.length;
+                                }
+                                const zip = new AdmZip(buf);
                                 vm.importZipArchive = zip;
                                 vm.importZipName = fileName;
                                 vm.importZipPath = fileName;
+                                vm._importTmpName = tmpName;
                                 vm.importZipError = undefined;
                                 vm.importSummary = undefined;
                                 vm.importError = undefined;
@@ -309,6 +320,10 @@
                             vm.importError = 'Import failed.';
                         } finally {
                             vm.importInProgress = false;
+                            if (vm._importTmpName) {
+                                try { NativeFile.delete(vm._importTmpName); } catch { /* ignore */ }
+                                vm._importTmpName = undefined;
+                            }
                         }
                     };
 

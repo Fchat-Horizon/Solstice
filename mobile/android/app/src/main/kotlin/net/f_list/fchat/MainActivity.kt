@@ -235,13 +235,20 @@ class MainActivity : Activity() {
 						val col = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
 						if (cursor.moveToFirst() && col >= 0) fileName = cursor.getString(col)
 					}
-					// Read bytes and base64-encode for safe JS delivery
-					val bytes = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
-					val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-					val safeB64 = JSONObject.quote(b64)
+					// Copy the zip to a temp file in filesDir instead of base64-encoding
+					// the whole file and passing it through the JS bridge. Large archives
+					// (80+ MB) caused OOM crashes because the base64 payload + AdmZip
+					// allocations exceeded the WebView heap. JS reads the file via
+					// NativeFile.readBytes() in manageable chunks instead.
+					val tmpName = ".import-pending.zip"
+					val tmpFile = java.io.File(filesDir, tmpName)
+					contentResolver.openInputStream(uri)!!.use { input ->
+						FileOutputStream(tmpFile).use { input.copyTo(it) }
+					}
 					val safeName = JSONObject.quote(fileName)
+					val safeTmp = JSONObject.quote(tmpName)
 					webView.evaluateJavascript(
-						"window.__mobileFilePicker && window.__mobileFilePicker($safeB64,$safeName)",
+						"window.__mobileFilePicker && window.__mobileFilePicker($safeTmp,$safeName)",
 						null
 					)
 				} catch (e: Exception) {
