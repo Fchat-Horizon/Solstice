@@ -137,10 +137,11 @@ iOS binaries can only be produced on **macOS with Xcode**. CI does this automati
 
 iOS is more restrictive than Android; on this build:
 
-- **Background connectivity is limited.** iOS has no equivalent to Android's foreground
-  service, so the chat connection only survives a short grace window after the app is
-  backgrounded and then suspends. Notifications fire while the app is foregrounded or within
-  that window.
+- **Background connectivity uses a silent-audio keep-alive.** iOS has no equivalent to
+  Android's foreground service, so while connected the app plays an inaudible looping audio
+  stream (the `audio` background mode) to stay running in the background and keep the
+  WebSocket alive. It mixes with other audio, so it won't stop your music. iOS can still
+  reclaim the app under memory pressure, and battery use is higher than a fully-suspended app.
 - **No remote/push notifications.** Only local notifications are used (which the app
   generates itself) — this is also what keeps it installable under SideStore free signing.
 - **SideStore constraints apply.** Free Apple IDs limit you to a few sideloaded apps and a

@@ -22,6 +22,13 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Keep-alive: NativeBackground plays a silent looping audio stream while connected so
+	     the WebView (and its WebSocket) keeps running in the background. Requires the `audio`
+	     background mode. Works under free provisioning / SideStore (no special entitlement). -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<!-- Avoids the export-compliance prompt; the app uses only standard TLS. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
