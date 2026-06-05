@@ -7,6 +7,10 @@
   - [Android](#android)
     - [Prerequisites](#prerequisites)
     - [Building](#building)
+  - [iOS (SideStore)](#ios-sidestore)
+    - [Installing via SideStore](#installing-via-sidestore)
+    - [Building from source (macOS)](#building-from-source-macos)
+    - [iOS limitations](#ios-limitations)
 - [Usage](#usage)
   - [Getting started](#getting-started)
 - [Development](#development)
@@ -24,7 +28,7 @@
 
 # Solstice
 
-This repository contains a continuation of the heavily customized F-Chat Rising, a version of the mainline F-Chat 3.0 client, packaged as a native Android application.
+This repository contains a continuation of the heavily customized F-Chat Rising, a version of the mainline F-Chat 3.0 client, packaged as a native Android application (with an experimental iOS build installable via SideStore).
 
 ## Features
 
@@ -75,6 +79,72 @@ Solstice is available as a native Android application that wraps the web app in 
    For a release build, use `./gradlew assembleRelease` — you will need to configure signing in `app/build.gradle`.
 
    Alternatively, open `mobile/android/` in Android Studio and build from there.
+
+## iOS (SideStore)
+
+> [!NOTE]
+> The iOS build is **experimental**. It wraps the same web app in a `WKWebView` and mirrors
+> the Android native bridges in Swift (`mobile/ios/`). It is distributed as an **unsigned
+> IPA** that you sideload with [SideStore](https://sidestore.io/) — SideStore re-signs it
+> on-device with your own Apple ID, so no paid Apple Developer account is required.
+
+### Installing via SideStore
+
+1. Set up [SideStore](https://sidestore.io/) on your device and pair it (one-time).
+2. In SideStore → **Sources**, add the Solstice source URL:
+
+   ```
+   https://raw.githubusercontent.com/Fchat-Horizon/Solstice/development/mobile/ios/sidestore-source.json
+   ```
+
+3. Open Solstice from the source and tap **Install** (or **Update**). SideStore refreshes the
+   7-day signature automatically while it's running.
+
+   You can also grab the unsigned `Solstice-<version>.ipa` directly from the
+   [Releases](https://github.com/Fchat-Horizon/Solstice/releases) page and install it in
+   SideStore via **My Apps → + → (pick the IPA)**.
+
+### Building from source (macOS)
+
+iOS binaries can only be produced on **macOS with Xcode**. CI does this automatically
+(`.github/workflows/ios.yml`, on a macOS runner), but to build locally:
+
+1. Install tooling: Xcode 15+, [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+   (`brew install xcodegen`), Node.js ≥ 24 and pnpm.
+2. Compile the web assets (this **must** run before generating the Xcode project — the
+   project includes `mobile/www` as a folder reference):
+
+   ```bash
+   pnpm install
+   pnpm run build:mobile:dist
+   ```
+
+3. Generate the Xcode project and build an unsigned `.ipa`:
+
+   ```bash
+   cd mobile/ios
+   xcodegen generate
+   xcodebuild -project Solstice.xcodeproj -scheme Solstice -configuration Release \
+     -sdk iphoneos -derivedDataPath build \
+     CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO clean build
+   mkdir -p Payload && cp -R build/Build/Products/Release-iphoneos/Solstice.app Payload/
+   zip -qry Solstice.ipa Payload
+   ```
+
+   Or open `Solstice.xcodeproj` in Xcode after `xcodegen generate` and run on a device/simulator.
+
+### iOS limitations
+
+iOS is more restrictive than Android; on this build:
+
+- **Background connectivity is limited.** iOS has no equivalent to Android's foreground
+  service, so the chat connection only survives a short grace window after the app is
+  backgrounded and then suspends. Notifications fire while the app is foregrounded or within
+  that window.
+- **No remote/push notifications.** Only local notifications are used (which the app
+  generates itself) — this is also what keeps it installable under SideStore free signing.
+- **SideStore constraints apply.** Free Apple IDs limit you to a few sideloaded apps and a
+  7-day signature that SideStore must refresh periodically.
 
 # Usage
 

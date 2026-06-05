@@ -1,0 +1,148 @@
+name: Build iOS (SideStore)
+
+# iOS can only be compiled on macOS, so this runs on a macOS runner. It builds the shared
+# web bundle, generates the Xcode project from mobile/ios/project.yml with XcodeGen, runs
+# the NativeLogs unit tests, and produces an UNSIGNED .ipa that SideStore re-signs on-device.
+# On a version tag it also attaches the .ipa + a filled-in SideStore source manifest to the
+# GitHub release.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [feat/ios-support]
+    tags: ['v[0-9]*']
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - 'chat/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    name: Build unsigned IPA
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      # Emits mobile/www, which mobile/ios/project.yml references as a folder reference.
+      # Must run BEFORE xcodegen so the folder exists when the project is generated.
+      - name: Build web assets
+        run: pnpm --filter solstice-mobile build:dist
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Read app version
+        id: version
+        run: |
+          version="$(node -p "require('./mobile/package.json').version")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          # Use a monotonic build number from the run number.
+          echo "build=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Xcode project
+        working-directory: mobile/ios
+        run: xcodegen generate
+
+      - name: Run unit tests (NativeLogs format parity)
+        working-directory: mobile/ios
+        run: |
+          xcodebuild test \
+            -project Solstice.xcodeproj \
+            -scheme Solstice \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build unsigned device app
+        working-directory: mobile/ios
+        run: |
+          xcodebuild \
+            -project Solstice.xcodeproj \
+            -scheme Solstice \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            MARKETING_VERSION="${{ steps.version.outputs.version }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            clean build
+
+      - name: Package unsigned IPA
+        working-directory: mobile/ios
+        run: |
+          APP="build/Build/Products/Release-iphoneos/Solstice.app"
+          test -d "$APP" || { echo "Build product not found at $APP"; exit 1; }
+          rm -rf Payload Solstice-*.ipa
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          IPA="Solstice-${{ steps.version.outputs.version }}.ipa"
+          zip -qry "$IPA" Payload
+          echo "Built $IPA ($(du -h "$IPA" | cut -f1))"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Solstice-ios-unsigned
+          path: mobile/ios/Solstice-*.ipa
+          if-no-files-found: error
+
+      # ---- Release-only: attach IPA + filled SideStore source to the GitHub release ----
+      - name: Build SideStore source manifest
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ github.ref_name }}"
+          IPA="mobile/ios/Solstice-${VERSION}.ipa"
+          SIZE="$(stat -f%z "$IPA")"
+          DATE="$(date -u +%Y-%m-%d)"
+          URL="${{ github.server_url }}/${{ github.repository }}/releases/download/${TAG}/Solstice-${VERSION}.ipa"
+          node - "$VERSION" "$DATE" "$SIZE" "$URL" <<'NODE'
+          const fs = require('fs');
+          const [version, date, size, url] = process.argv.slice(2);
+          const path = 'mobile/ios/sidestore-source.json';
+          const src = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const app = src.apps[0];
+          Object.assign(app, {
+            version, versionDate: date, size: Number(size), downloadURL: url,
+          });
+          app.versions = [{
+            version, date,
+            localizedDescription: 'See the GitHub release notes.',
+            downloadURL: url, size: Number(size), minOSVersion: '14.0',
+          }];
+          fs.writeFileSync('sidestore-source.json', JSON.stringify(src, null, 2));
+          NODE
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            mobile/ios/Solstice-*.ipa
+            sidestore-source.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,45 @@
+{
+  "name": "Solstice",
+  "identifier": "net.f_list.solstice.source",
+  "sourceURL": "https://raw.githubusercontent.com/Fchat-Horizon/Solstice/development/mobile/ios/sidestore-source.json",
+  "apps": [
+    {
+      "name": "Solstice",
+      "bundleIdentifier": "net.f_list.solstice",
+      "developerName": "Solstice Contributors",
+      "subtitle": "F-List.net chat client",
+      "localizedDescription": "Solstice is a community client for F-List.net chat — an iOS build of the Horizon/Solstice app, installable via SideStore.",
+      "iconURL": "https://raw.githubusercontent.com/Fchat-Horizon/Solstice/development/mobile/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "tintColor": "262626",
+      "category": "social",
+      "screenshotURLs": [],
+
+      "_comment": "The fields below are filled in by .github/workflows/ios.yml on tagged releases. Both the legacy top-level keys and the newer versions[] array are provided so older and newer SideStore/AltStore parsers both work.",
+      "version": "2.2.0",
+      "versionDate": "2026-06-05",
+      "versionDescription": "See the GitHub release notes.",
+      "downloadURL": "https://github.com/Fchat-Horizon/Solstice/releases/latest/download/Solstice-2.2.0.ipa",
+      "size": 0,
+      "minOSVersion": "14.0",
+
+      "versions": [
+        {
+          "version": "2.2.0",
+          "date": "2026-06-05",
+          "localizedDescription": "See the GitHub release notes.",
+          "downloadURL": "https://github.com/Fchat-Horizon/Solstice/releases/latest/download/Solstice-2.2.0.ipa",
+          "size": 0,
+          "minOSVersion": "14.0"
+        }
+      ],
+
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSUserNotificationsUsageDescription": "Show message notifications."
+        }
+      }
+    }
+  ],
+  "news": []
+}

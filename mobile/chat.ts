@@ -48,6 +48,9 @@ import Notifications from './notifications';
 const version = (<{version: string}>require('./package.json')).version; //tslint:disable-line:no-require-imports
 (<any>window)['setupPlatform'] = (platform: string) => { //tslint:disable-line:no-any
     Axios.defaults.params = { __fchat: `mobile-${platform}/${version}` };
+    // Record which native host we're running under ('android' | 'ios') so platform-specific
+    // paths (e.g. the iOS import picker in AppExporterDialog) can branch on it.
+    document.documentElement.dataset.mobileOs = platform;
 };
 document.documentElement.dataset.mobilePlatform = 'true';
 // window.open() is a no-op in the Android WebView — route all calls through location.href

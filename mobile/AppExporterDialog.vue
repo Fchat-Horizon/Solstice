@@ -84,13 +84,15 @@
                     });
 
                     // Populate character list from mobile storage. NativeFile.listDirectories
-                    // is declared as Promise<string[]> in TypeScript but the actual Android
-                    // bridge implementation is synchronous (JSON.parse(listDirectoriesN(p))).
-                    const dirs = NativeFile.listDirectories('/') as unknown as string[];
-                    vm.exportCharacters = dirs
-                        .filter((d: string) => !d.startsWith('.'))
-                        .sort((a: string, b: string) => a.localeCompare(b))
-                        .map((name: string) => ({ name, selected: true }));
+                    // is Promise<string[]>; the Android bridge resolves it synchronously while
+                    // the iOS bridge is genuinely async — awaiting works for both.
+                    void (async () => {
+                        const dirs = (await NativeFile.listDirectories('/')) as unknown as string[];
+                        vm.exportCharacters = dirs
+                            .filter((d: string) => !d.startsWith('.'))
+                            .sort((a: string, b: string) => a.localeCompare(b))
+                            .map((name: string) => ({ name, selected: true }));
+                    })();
 
                     // Override runExport: Exporter.vue uses archiver+fs which are no-ops on
                     // mobile. Delegate to the native Kotlin zip export instead.
@@ -98,8 +100,10 @@
                         vm.startExportAnimation();
                         vm.exportSummary = undefined;
                         vm.exportError = undefined;
-                        setTimeout(() => {
-                            const result: string = (window as any).NativeFile.exportData();
+                        setTimeout(async () => {
+                            // exportData() resolves synchronously on Android and asynchronously
+                            // on iOS (share sheet); await covers both.
+                            const result: string = await (window as any).NativeFile.exportData();
                             vm.stopExportAnimation();
                             if (result) {
                                 vm.exportSummary = result;
@@ -195,6 +199,14 @@
                                 vm.importZipError = "We couldn't read that export. Please choose a Solstice export created by this app.";
                             }
                         };
+                        // On iOS the WKWebView <input type=file> path doesn't reach a native
+                        // file chooser the way Android's onShowFileChooser does. Ask the native
+                        // bridge to open a document picker instead; it delivers the file back
+                        // through the same window.__mobileFilePicker callback set above.
+                        if (document.documentElement.dataset.mobileOs === 'ios') {
+                            (window as any).NativeFile.pickImportFile();
+                            return;
+                        }
                         const input = document.createElement('input');
                         input.type = 'file';
                         input.accept = '.zip';

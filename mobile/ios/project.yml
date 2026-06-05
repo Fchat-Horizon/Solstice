@@ -1,0 +1,94 @@
+# XcodeGen spec for the Solstice iOS app.
+#
+# The .xcodeproj is NOT committed — it is generated from this file with `xcodegen`
+# (https://github.com/yonaskolb/XcodeGen). This keeps the project reviewable as plain
+# YAML and lets us author it from Linux where Xcode is unavailable.
+#
+# IMPORTANT: build the web bundle first (`pnpm run build:mobile:dist`, which emits
+# `mobile/www`) — the `../www` folder reference below must exist when the project is
+# generated and built. Then:
+#
+#   cd mobile/ios
+#   xcodegen generate
+#   xcodebuild -project Solstice.xcodeproj -scheme Solstice -sdk iphoneos \
+#       -configuration Release CODE_SIGNING_ALLOWED=NO build
+#
+# The CI workflow (.github/workflows/ios.yml) does exactly this and packages an
+# unsigned .ipa for SideStore.
+name: Solstice
+options:
+  bundleIdPrefix: net.f_list
+  deploymentTarget:
+    iOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    MARKETING_VERSION: "2.2.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Unsigned by default — SideStore re-signs on-device with the user's own
+    # free/paid Apple ID, so we never ship a signed binary.
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: ""
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGNING_ALLOWED: "NO"
+    DEVELOPMENT_TEAM: ""
+    SWIFT_VERSION: "5.0"
+
+targets:
+  Solstice:
+    type: application
+    platform: iOS
+    sources:
+      - path: Solstice
+        # Referenced via INFOPLIST_FILE — keep it out of the build phases.
+        excludes:
+          - Info.plist
+      # The shared web bundle, included as a folder reference so whatever webpack
+      # emits is copied verbatim into Solstice.app/www/ (the iOS analogue of the
+      # Android gradle `copyWebAssets` task).
+      - path: ../www
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.f_list.solstice
+        PRODUCT_NAME: Solstice
+        INFOPLIST_FILE: Solstice/Info.plist
+        # We ship a full Info.plist — don't let Xcode generate/merge one on top of it.
+        GENERATE_INFOPLIST_FILE: "NO"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_BITCODE: "NO"
+      configs:
+        # Required so the test target's `@testable import Solstice` works.
+        debug:
+          ENABLE_TESTABILITY: "YES"
+
+  SolsticeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: SolsticeTests
+    dependencies:
+      - target: Solstice
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.f_list.solstice.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+
+schemes:
+  Solstice:
+    build:
+      targets:
+        Solstice: all
+        SolsticeTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - SolsticeTests
+    archive:
+      config: Release
