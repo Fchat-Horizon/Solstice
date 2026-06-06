@@ -83,26 +83,35 @@ Solstice is available as a native Android application that wraps the web app in 
 ## iOS (SideStore)
 
 > [!NOTE]
-> The iOS build is **experimental**. It wraps the same web app in a `WKWebView` and mirrors
-> the Android native bridges in Swift (`mobile/ios/`). It is distributed as an **unsigned
-> IPA** that you sideload with [SideStore](https://sidestore.io/) — SideStore re-signs it
-> on-device with your own Apple ID, so no paid Apple Developer account is required.
+> The iOS build is **experimental** and currently distributed as a **private test build** —
+> it wraps the same web app in a `WKWebView` and mirrors the Android native bridges in Swift
+> (`mobile/ios/`). The `.ipa` is ad-hoc signed in CI; [SideStore](https://sidestore.io/)
+> re-signs it on-device with your own Apple ID, so no paid Apple Developer account is required.
 
 ### Installing via SideStore
 
-1. Set up [SideStore](https://sidestore.io/) on your device and pair it (one-time).
-2. In SideStore → **Sources**, add the Solstice source URL:
+The IPA is **not published publicly**. It is built by CI and uploaded as a private workflow
+artifact (downloadable by repo collaborators).
 
+1. Download the latest test build (requires repo access):
+
+   ```bash
+   gh run download -R Fchat-Horizon/Solstice -n Solstice-ios-unsigned
    ```
-   https://raw.githubusercontent.com/Fchat-Horizon/Solstice/development/mobile/ios/sidestore-source.json
-   ```
 
-3. Open Solstice from the source and tap **Install** (or **Update**). SideStore refreshes the
-   7-day signature automatically while it's running.
+   (or from the **Actions → Build iOS** run page → Artifacts).
 
-   You can also grab the unsigned `Solstice-<version>.ipa` directly from the
-   [Releases](https://github.com/Fchat-Horizon/Solstice/releases) page and install it in
-   SideStore via **My Apps → + → (pick the IPA)**.
+2. Install it with a **standalone** [SideStore](https://sidestore.io/) (or AltStore):
+   **My Apps → + → pick `Solstice-<version>.ipa`**. SideStore re-signs it and refreshes the
+   7-day signature automatically.
+
+> [!IMPORTANT]
+> Use a _standalone_ SideStore, **not** the SideStore bundled inside LiveContainer — the
+> embedded one crashes in its local-install path. (Running the IPA as a LiveContainer guest
+> also works.)
+>
+> `mobile/ios/sidestore-source.json` is a template for future public source-based
+> distribution; it is intentionally not published while the build is private.
 
 ### Building from source (macOS)
 
