@@ -1,7 +1,7 @@
 {
   "name": "Solstice",
   "identifier": "net.f_list.solstice.source",
-  "sourceURL": "https://raw.githubusercontent.com/Fchat-Horizon/Solstice/development/mobile/ios/sidestore-source.json",
+  "sourceURL": "https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/sidestore-source.json",
   "apps": [
     {
       "name": "Solstice",
