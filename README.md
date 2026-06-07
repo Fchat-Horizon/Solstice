@@ -90,28 +90,30 @@ Solstice is available as a native Android application that wraps the web app in 
 
 ### Installing via SideStore
 
-The IPA is **not published publicly**. It is built by CI and uploaded as a private workflow
-artifact (downloadable by repo collaborators).
+The latest build is published as a **rolling pre-release** (tag `ios-latest`) with a stable
+download URL — it's a prerelease _test_ build, not an official release.
 
-1. Download the latest test build (requires repo access):
+- **One-tap (LiveContainer):** on your iPhone, open the IPA link and choose **Open in
+  LiveContainer** (or your sideloader):
 
-   ```bash
-   gh run download -R Fchat-Horizon/Solstice -n Solstice-ios-unsigned
-   ```
+  ```
+  https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/Solstice.ipa
+  ```
 
-   (or from the **Actions → Build iOS** run page → Artifacts).
+- **SideStore source (tap-to-update):** add this as a Source in SideStore, then tap Install/Update:
 
-2. Install it with a **standalone** [SideStore](https://sidestore.io/) (or AltStore):
-   **My Apps → + → pick `Solstice-<version>.ipa`**. SideStore re-signs it and refreshes the
-   7-day signature automatically.
+  ```
+  https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/sidestore-source.json
+  ```
+
+SideStore/LiveContainer re-signs the app on-device with your Apple ID (no paid account needed)
+and refreshes the 7-day signature automatically.
 
 > [!IMPORTANT]
-> Use a _standalone_ SideStore, **not** the SideStore bundled inside LiveContainer — the
-> embedded one crashes in its local-install path. (Running the IPA as a LiveContainer guest
-> also works.)
->
-> `mobile/ios/sidestore-source.json` is a template for future public source-based
-> distribution; it is intentionally not published while the build is private.
+> The SideStore bundled **inside LiveContainer** crashes in its local-install path — install
+> with a _standalone_ SideStore, or just run the IPA as a LiveContainer guest (Open in
+> LiveContainer). Collaborators can also grab the build privately from CI:
+> `gh run download -R Fchat-Horizon/Solstice -n Solstice-ios-unsigned`.
 
 ### Building from source (macOS)
 

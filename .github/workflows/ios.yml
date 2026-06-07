@@ -4,14 +4,15 @@ name: Build iOS (SideStore)
 # web bundle, generates the Xcode project from mobile/ios/project.yml with XcodeGen, runs
 # the NativeLogs unit tests, ad-hoc signs the app, and produces an unsigned-by-SideStore .ipa.
 #
-# The .ipa is published ONLY as a private workflow artifact (downloadable by repo
-# collaborators) — it is deliberately NOT attached to any public GitHub release, so the
-# build stays non-public for testing. Install it by importing the .ipa into a standalone
-# SideStore (My Apps -> +). Note: there is intentionally no `tags` trigger, so cutting an
-# Android release does not publish an iOS IPA.
+# The .ipa is published two ways: as a private workflow artifact (collaborators only), and
+# — on pushes to feat/ios-support — to a rolling pre-release (tag `ios-latest`) with a STABLE
+# download URL so it can be installed one-tap on-device (tap the link -> Open in LiveContainer,
+# or add the SideStore source). The pre-release is marked prerelease + make_latest:false so it
+# never hijacks the Android "Latest" release. There is intentionally no `tags` trigger, so
+# cutting an Android release does not publish an iOS IPA.
 
 permissions:
-  contents: read
+  contents: write
 
 on:
   push:
@@ -130,3 +131,43 @@ jobs:
           name: Solstice-ios-unsigned
           path: mobile/ios/Solstice-*.ipa
           if-no-files-found: error
+
+      # One-tap on-device install: stable-named .ipa + a SideStore source pointing at it.
+      # Only on direct pushes to the iOS branch (never PRs).
+      - name: Prepare rolling-release assets
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/ios-support'
+        working-directory: mobile/ios
+        run: |
+          cp "Solstice-${{ steps.version.outputs.version }}.ipa" Solstice.ipa
+          URL="${{ github.server_url }}/${{ github.repository }}/releases/download/ios-latest/Solstice.ipa"
+          node - "${{ steps.version.outputs.version }}" "$(date -u +%Y-%m-%d)" "$(stat -f%z Solstice.ipa)" "$URL" <<'NODE'
+          const fs = require('fs');
+          const [version, date, size, url] = process.argv.slice(2);
+          const src = JSON.parse(fs.readFileSync('sidestore-source.json', 'utf8'));
+          const app = src.apps[0];
+          Object.assign(app, { version, versionDate: date, size: Number(size), downloadURL: url });
+          app.versions = [{ version, date, localizedDescription: 'Rolling iOS test build.',
+                            downloadURL: url, size: Number(size), minOSVersion: '14.0' }];
+          fs.writeFileSync('sidestore-source.json', JSON.stringify(src, null, 2));
+          NODE
+
+      - name: Publish rolling pre-release (ios-latest)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/ios-support'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-latest
+          prerelease: true
+          make_latest: 'false'
+          name: iOS test build (latest)
+          body: |
+            Rolling, ad-hoc-signed iOS **test** build of the latest `feat/ios-support` commit —
+            not an official release. SideStore/LiveContainer re-signs it on-device.
+
+            **Install (one-tap):** open `Solstice.ipa` below on your iPhone and choose
+            **Open in LiveContainer** (or your sideloader). Or add `sidestore-source.json`
+            as a SideStore source for tap-to-update.
+          files: |
+            mobile/ios/Solstice.ipa
+            mobile/ios/sidestore-source.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
