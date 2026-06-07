@@ -3,16 +3,25 @@ import WebKit
 import AVFoundation
 
 // Mirrors Background.kt / BackgroundService.kt. iOS has no foreground service + wake lock, so
-// to keep the WebSocket alive while backgrounded we use the well-known silent-audio trick: an
-// app with the `audio` background mode (see Info.plist) stays running as long as it is
-// producing audio. We loop an inaudible PCM buffer, which keeps the WKWebView (and its JS
-// WebSocket) running. start()/stop() are driven by the connection lifecycle in Index.vue.
+// to keep the WebSocket alive while backgrounded we use the silent-audio trick: an app with
+// the `audio` background mode (Info.plist) stays running as long as it produces audio. We
+// loop an inaudible (very low amplitude, NOT pure digital-silence) PCM buffer.
 //
-// We use `.mixWithOthers` so we don't hijack the user's music; the app is still "playing
-// audio" for background purposes. As a secondary measure we also hold a background task.
+// Robustness matters because the naive version gets the app killed:
+//   * Pure digital silence can trip iOS's "not actually producing audio" termination, so the
+//     buffer carries a tiny non-zero signal.
+//   * After an interruption (phone call, another app's audio) the session is deactivated; if
+//     we don't resume, audio stops, the app is suspended and may be killed — so we observe
+//     interruption/route-change notifications and restart.
+//
+// LiveContainer caveat: the guest's UIBackgroundModes only take effect if the LiveContainer
+// host honors background audio for the guest. If iOS kills the app on backgrounding under
+// LiveContainer, enable background audio / "keep alive" for Solstice in LiveContainer's
+// per-app settings (or run it standalone). See the README "iOS limitations" section.
 final class NativeBackground: NSObject, WKScriptMessageHandlerWithReply {
     private var taskId: UIBackgroundTaskIdentifier = .invalid
-    private var silencePlayer: AVAudioPlayer?
+    private var player: AVAudioPlayer?
+    private var active = false
 
     func userContentController(_ userContentController: WKUserContentController,
                               didReceive message: WKScriptMessage,
@@ -26,43 +35,75 @@ final class NativeBackground: NSObject, WKScriptMessageHandlerWithReply {
     }
 
     private func start() {
-        stopBackgroundTask()
-        taskId = UIApplication.shared.beginBackgroundTask(withName: "fchat") { [weak self] in
-            self?.stopBackgroundTask()
-        }
-
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, options: [.mixWithOthers])
-            try session.setActive(true)
-            if silencePlayer == nil {
-                silencePlayer = try AVAudioPlayer(data: Self.makeSilentWAV())
-                silencePlayer?.numberOfLoops = -1   // loop forever
-                silencePlayer?.volume = 0
-                silencePlayer?.prepareToPlay()
-            }
-            silencePlayer?.play()
-        } catch {
-            // If audio can't start, we still have the (short) background-task grace window.
-        }
+        guard !active else { return }
+        active = true
+        beginTask()
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(handleInterruption(_:)),
+                           name: AVAudioSession.interruptionNotification, object: nil)
+        center.addObserver(self, selector: #selector(handleRouteChange(_:)),
+                           name: AVAudioSession.routeChangeNotification, object: nil)
+        startAudio()
     }
 
     private func stop() {
-        silencePlayer?.stop()
+        guard active else { return }
+        active = false
+        NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: nil)
+        player?.stop()
+        player = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
-        stopBackgroundTask()
+        endTask()
     }
 
-    private func stopBackgroundTask() {
+    private func startAudio() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            // .mixWithOthers so we don't interrupt the user's music; still counts as "playing".
+            try session.setCategory(.playback, options: [.mixWithOthers])
+            try session.setActive(true)
+            if player == nil {
+                player = try AVAudioPlayer(data: Self.makeKeepAliveWAV())
+                player?.numberOfLoops = -1
+            }
+            player?.play()
+        } catch {
+            // Audio unavailable (e.g. host didn't grant background audio) — fall back to the
+            // background-task grace window only. Won't keep alive long, but won't crash.
+        }
+    }
+
+    @objc private func handleInterruption(_ note: Notification) {
+        guard active,
+              let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              AVAudioSession.InterruptionType(rawValue: raw) == .ended else { return }
+        startAudio()
+    }
+
+    @objc private func handleRouteChange(_ note: Notification) {
+        guard active, player?.isPlaying != true else { return }
+        startAudio()
+    }
+
+    private func beginTask() {
+        endTask()
+        taskId = UIApplication.shared.beginBackgroundTask(withName: "fchat") { [weak self] in
+            self?.endTask()
+        }
+    }
+
+    private func endTask() {
         guard taskId != .invalid else { return }
         UIApplication.shared.endBackgroundTask(taskId)
         taskId = .invalid
     }
 
-    /// Builds a 1-second mono 16-bit PCM WAV of silence in memory (no bundled asset needed).
-    private static func makeSilentWAV(seconds: Double = 1, sampleRate: UInt32 = 8000) -> Data {
+    /// 1-second mono 16-bit PCM WAV carrying a tiny, inaudible low-frequency signal (amplitude
+    /// ~16/32767 ≈ -66 dBFS) rather than pure silence, so iOS registers real audio output.
+    private static func makeKeepAliveWAV(sampleRate: UInt32 = 8000) -> Data {
         let bytesPerSample: UInt32 = 2
-        let numSamples = UInt32(Double(sampleRate) * seconds)
+        let numSamples = sampleRate
         let dataSize = numSamples * bytesPerSample
         let byteRate = sampleRate * bytesPerSample
 
@@ -78,7 +119,10 @@ final class NativeBackground: NSObject, WKScriptMessageHandlerWithReply {
         ascii("fmt "); le32(16); le16(1); le16(1)               // PCM, mono
         le32(sampleRate); le32(byteRate); le16(2); le16(16)     // block align, bits/sample
         ascii("data"); le32(dataSize)
-        d.append(Data(count: Int(dataSize)))                    // silence (zeros)
+        for i in 0..<Int(numSamples) {
+            let s = Int16(16.0 * sin(2.0 * Double.pi * 50.0 * Double(i) / Double(sampleRate)))
+            le16(UInt16(bitPattern: s))
+        }
         return d
     }
 }

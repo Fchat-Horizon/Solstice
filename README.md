@@ -147,10 +147,13 @@ iOS binaries can only be produced on **macOS with Xcode**. CI does this automati
 iOS is more restrictive than Android; on this build:
 
 - **Background connectivity uses a silent-audio keep-alive.** iOS has no equivalent to
-  Android's foreground service, so while connected the app plays an inaudible looping audio
-  stream (the `audio` background mode) to stay running in the background and keep the
-  WebSocket alive. It mixes with other audio, so it won't stop your music. iOS can still
-  reclaim the app under memory pressure, and battery use is higher than a fully-suspended app.
+  Android's foreground service, so while connected the app loops an inaudible audio stream
+  (the `audio` background mode) to stay running and keep the WebSocket alive. It mixes with
+  other audio and resumes after interruptions. iOS can still terminate it under memory
+  pressure.
+  - **Under LiveContainer**, the guest's background audio only works if the LiveContainer host
+    honors it. If the app gets killed shortly after backgrounding, enable background audio /
+    "keep alive" for Solstice in LiveContainer's per-app settings, or run it standalone.
 - **No remote/push notifications.** Only local notifications are used (which the app
   generates itself) — this is also what keeps it installable under SideStore free signing.
 - **SideStore constraints apply.** Free Apple IDs limit you to a few sideloaded apps and a
