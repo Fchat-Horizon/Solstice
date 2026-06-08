@@ -17,7 +17,7 @@
 # unsigned .ipa for SideStore.
 name: Solstice
 options:
-  bundleIdPrefix: net.f_list
+  bundleIdPrefix: net.flist
   deploymentTarget:
     iOS: "14.0"
   createIntermediateGroups: true
