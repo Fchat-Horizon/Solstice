@@ -146,8 +146,9 @@ jobs:
           const src = JSON.parse(fs.readFileSync('sidestore-source.json', 'utf8'));
           const app = src.apps[0];
           Object.assign(app, { version, versionDate: date, size: Number(size), downloadURL: url });
+          app.minOSVersion = '14.0.0';
           app.versions = [{ version, date, localizedDescription: 'Rolling iOS test build.',
-                            downloadURL: url, size: Number(size), minOSVersion: '14.0' }];
+                            downloadURL: url, size: Number(size), minOSVersion: '14.0.0' }];
           fs.writeFileSync('sidestore-source.json', JSON.stringify(src, null, 2));
           NODE
 
