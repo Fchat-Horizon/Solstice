@@ -32,10 +32,12 @@
 	<!-- Avoids the export-compliance prompt; the app uses only standard TLS. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
-	<!-- Empty dict gives a default full-screen launch screen so the WebView lays
-	     out edge-to-edge and CSS env(safe-area-inset-*) resolves correctly. -->
-	<key>UILaunchScreen</key>
-	<dict/>
+	<!-- A real launch storyboard is the unambiguous "supports full screen" signal. An empty
+	     UILaunchScreen dict is fragile (and ignored under LiveContainer), which can drop the
+	     app into letterbox/compatibility mode where the home indicator and safe-area insets
+	     misbehave. -->
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
 	<key>UISupportedInterfaceOrientations</key>
