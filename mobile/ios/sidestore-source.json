@@ -1,10 +1,10 @@
 {
   "name": "Solstice",
-  "identifier": "net.f_list.solstice.source",
+  "identifier": "net.flist.solstice.source",
   "apps": [
     {
       "name": "Solstice",
-      "bundleIdentifier": "net.f_list.solstice",
+      "bundleIdentifier": "net.flist.solstice",
       "developerName": "Solstice Contributors",
       "subtitle": "F-List.net chat client",
       "localizedDescription": "Solstice is a community client for F-List.net chat — an iOS build of the Horizon/Solstice app.",

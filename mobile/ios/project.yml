@@ -53,7 +53,7 @@ targets:
         buildPhase: resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: net.f_list.solstice
+        PRODUCT_BUNDLE_IDENTIFIER: net.flist.solstice
         PRODUCT_NAME: Solstice
         INFOPLIST_FILE: Solstice/Info.plist
         # We ship a full Info.plist — don't let Xcode generate/merge one on top of it.
@@ -75,7 +75,7 @@ targets:
       - target: Solstice
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: net.f_list.solstice.tests
+        PRODUCT_BUNDLE_IDENTIFIER: net.flist.solstice.tests
         GENERATE_INFOPLIST_FILE: "YES"
 
 schemes:
