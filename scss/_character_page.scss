@@ -272,6 +272,22 @@
   }
 }
 
+// On narrow screens the fixed 180px thumbnails only fit one per row (notably on iOS, where
+// WKWebView renders at device-width rather than the zoomed-out width Android's WebView uses).
+// Shrink them so several fit per row.
+@media (max-width: 600px) {
+  .character-images {
+    .character-image-thumb-wrapper {
+      width: 110px;
+      height: 110px;
+    }
+    .img-thumbnail {
+      width: 100px;
+      height: 100px;
+    }
+  }
+}
+
 .image-gallery-selector {
   width: 100%;
   justify-content: flex-end;
