@@ -205,10 +205,14 @@ export class StandardBBCodeParser extends CoreBBCodeParser {
           else {
             clearTimeout(timeout);
             body.style.transition = 'initial';
-            setImmediate(() => {
+            // window.setTimeout, not setImmediate: setImmediate is a Node/Electron
+            // global absent from the Android WebView (and unpolyfilled here), so it
+            // threw and silently aborted the collapse. setTimeout(…, 0) is the same
+            // next-macrotask deferral and works on both platforms.
+            window.setTimeout(() => {
               body.style.transition = '';
               body.style.height = '0';
-            });
+            }, 0);
           }
           body.style.height = `${body.scrollHeight}px`;
           outer.className = `card bg-light bbcode-collapse ${!isCollapsed ? 'collapsed' : ''}`;

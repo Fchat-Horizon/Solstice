@@ -38,7 +38,9 @@
  * @see {@link https://github.com/f-list/exported|GitHub repo}
  */
 import Axios from 'axios';
+import {ipcMain} from 'electron';
 import {init as initCore} from '../chat/core';
+import {AdCoordinatorHost} from '../chat/ads/ad-coordinator-host';
 import Socket from '../chat/WebSocket';
 import Connection from '../fchat/connection';
 import {appVersion, GeneralSettings, Logs, SettingsStore} from './filesystem';
@@ -79,6 +81,14 @@ try {
 
 const connection = new Connection('Solstice (Mobile)', appVersion, Socket);
 initCore(connection, new GeneralSettings() as any, Logs, SettingsStore, Notifications);
+
+// On desktop the ad coordinator host lives in the Electron main process; on mobile there
+// is no main process, so host it here in the WebView. Without this, the guest's
+// requestTurnToPostAd() never resolves and the shared posting throat deadlocks, which
+// freezes the send button, enter-to-send and auto-ads (issue #2).
+const adCoordinator = new AdCoordinatorHost();
+ipcMain.on('request-send-ad', (event: any, adId: string) => //tslint:disable-line:no-any
+    adCoordinator.processAdRequest(event, adId));
 
 new Index({ //tslint:disable-line:no-unused-expression
     el: '#app'
