@@ -227,9 +227,13 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
     }
 
     private func deliverImport(_ data: Data?, _ name: String?) {
-        let b64Arg = data.map { Self.jsString($0.base64EncodedString()) } ?? "null"
-        let nameArg = name.map { Self.jsString($0) } ?? "null"
-        webView.evaluateJavaScript("window.__mobileFilePicker && window.__mobileFilePicker(\(b64Arg),\(nameArg))")
+        // Match the Android import flow: stage the picked file into app storage and hand the
+        // web layer a temp filename (it reads it back in chunks via NativeFile.readBytes),
+        // rather than passing the whole file as one giant base64 string.
+        let tmpName = data.flatMap { nativeFile.stageImportFile($0) }
+        let tmpArg = tmpName.map { Self.jsString($0) } ?? "null"
+        let nameArg = (tmpName != nil ? name : nil).map { Self.jsString($0) } ?? "null"
+        webView.evaluateJavaScript("window.__mobileFilePicker && window.__mobileFilePicker(\(tmpArg),\(nameArg))")
     }
 
     // MARK: - Helpers

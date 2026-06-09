@@ -28,7 +28,7 @@
   }
 
   window.NativeFile = make('nativeFile', [
-    'read', 'getSize', 'write', 'writeBytes',
+    'read', 'getSize', 'readBytes', 'delete', 'write', 'writeBytes',
     'listDirectories', 'listFiles', 'ensureDirectory',
     'exportData', 'pickImportFile'
   ]);

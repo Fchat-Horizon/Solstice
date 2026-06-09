@@ -36,6 +36,10 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
         case "getSize":
             let attrs = try? fm.attributesOfItem(atPath: url(for: call.string(0)).path)
             replyHandler((attrs?[.size] as? NSNumber)?.intValue ?? 0, nil)
+        case "readBytes":
+            replyHandler(readBytes(url: url(for: call.string(0)), offset: call.int(1), length: call.int(2)), nil)
+        case "delete":
+            replyHandler((try? fm.removeItem(at: url(for: call.string(0)))) != nil, nil)
         case "write":
             writeData(Data(call.string(1).utf8), to: url(for: call.string(0)))
             replyHandler(nil, nil)
@@ -63,6 +67,32 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         try? data.write(to: url)
+    }
+
+    // Reads `length` bytes at `offset` and returns them base64-encoded. Mirrors File.kt's
+    // readBytes — the importer reads the staged zip in chunks to avoid huge allocations.
+    private func readBytes(url: URL, offset: Int, length: Int) -> String {
+        guard length > 0, let fh = try? FileHandle(forReadingFrom: url) else { return "" }
+        defer { try? fh.close() }
+        do {
+            try fh.seek(toOffset: UInt64(max(0, offset)))
+            return (try fh.read(upToCount: length) ?? Data()).base64EncodedString()
+        } catch {
+            return ""
+        }
+    }
+
+    // Writes a picked import file into app storage and returns its relative name, so the web
+    // layer reads it back via getSize/readBytes (the same temp-file flow Android uses) and
+    // deletes it when done. Called by WebViewController's document-picker delegate.
+    func stageImportFile(_ data: Data) -> String? {
+        let name = ".import.tmp"
+        do {
+            try data.write(to: url(for: name))
+            return name
+        } catch {
+            return nil
+        }
     }
 
     private func entries(at url: URL, directories: Bool) -> [String] {

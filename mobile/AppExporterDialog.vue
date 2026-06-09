@@ -131,12 +131,14 @@
                                 // Read the zip in 4 MB chunks to avoid allocating one giant
                                 // base64 string through evaluateJavascript.
                                 const CHUNK = 4 * 1024 * 1024;
-                                const fileSize: number = NativeFile.getSize(tmpName);
+                                // getSize/readBytes are synchronous on the Android bridge but
+                                // genuinely async on iOS — await works for both.
+                                const fileSize: number = await NativeFile.getSize(tmpName);
                                 const buf = Buffer.allocUnsafe(fileSize);
                                 let offset = 0;
                                 while (offset < fileSize) {
                                     const chunkLen = Math.min(CHUNK, fileSize - offset);
-                                    const b64chunk: string = NativeFile.readBytes(tmpName, offset, chunkLen);
+                                    const b64chunk: string = await NativeFile.readBytes(tmpName, offset, chunkLen);
                                     const decoded = Buffer.from(b64chunk, 'base64');
                                     decoded.copy(buf, offset);
                                     offset += decoded.length;
@@ -333,7 +335,7 @@
                         } finally {
                             vm.importInProgress = false;
                             if (vm._importTmpName) {
-                                try { NativeFile.delete(vm._importTmpName); } catch { /* ignore */ }
+                                try { await NativeFile.delete(vm._importTmpName); } catch { /* ignore */ }
                                 vm._importTmpName = undefined;
                             }
                         }

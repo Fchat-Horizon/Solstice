@@ -13,6 +13,8 @@ declare global {
         listDirectories(name: string): Promise<string[]>
         listFiles(name: string): Promise<string[]>
         getSize(name: string): Promise<number>
+        readBytes(name: string, offset: number, length: number): Promise<string>
+        delete(name: string): Promise<boolean>
         ensureDirectory(name: string): Promise<void>
         exportData(): string
     };
