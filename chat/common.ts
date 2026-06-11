@@ -292,7 +292,32 @@ export function messageToString(
 
 export function getKey(e: KeyboardEvent): Keys {
   // tslint:disable-next-line deprecation
-  return e.keyCode;
+  const code = e.keyCode;
+  // In a contenteditable on iOS WKWebView, the soft keyboard reports keyCode 0/229 (IME) instead
+  // of the real key, including Return, which broke Enter-to-send (the original client used a
+  // <textarea>, where Return reports a real keyCode 13). Fall back to the modern e.key for the
+  // keys our handlers act on. Android/desktop report real keyCodes so this branch never runs
+  // there, and ordinary iOS typing (keyCode 229, e.key === a character) falls through to `code`.
+  if (code === 0 || code === 229)
+    switch (e.key) {
+      case 'Enter':
+        return Keys.Enter;
+      case 'Tab':
+        return Keys.Tab;
+      case 'Escape':
+        return Keys.Escape;
+      case 'Backspace':
+        return Keys.Backspace;
+      case 'ArrowUp':
+        return Keys.ArrowUp;
+      case 'ArrowDown':
+        return Keys.ArrowDown;
+      case 'ArrowLeft':
+        return Keys.ArrowLeft;
+      case 'ArrowRight':
+        return Keys.ArrowRight;
+    }
+  return code;
 }
 
 /*tslint:disable:no-any no-unsafe-any*/ //because errors can be any
