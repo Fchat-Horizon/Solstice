@@ -21,6 +21,14 @@ function isIos(): boolean {
   return document.documentElement.dataset.mobileOs === 'ios';
 }
 
+// The gateway rejects a gateway/ntfy URL with no scheme, so a user who types "ntfy.sh/topic"
+// (without https://) silently fails registration. Tolerate it by prepending https://.
+function withHttps(u: string): string {
+  const t = u.trim();
+  if (t.length === 0 || /^https?:\/\//i.test(t)) return t;
+  return `https://${t}`;
+}
+
 class Gateway {
   private account = '';
   private password = '';
@@ -36,9 +44,9 @@ class Gateway {
   private cfg(): { url: string; token: string; ntfyUrl: string } {
     const s = (window as any).__generalSettings || {}; //tslint:disable-line:no-any
     return {
-      url: String(s.gatewayUrl || '').replace(/\/+$/, ''),
-      token: String(s.gatewayToken || ''),
-      ntfyUrl: String(s.gatewayNtfyUrl || '')
+      url: withHttps(String(s.gatewayUrl || '')).replace(/\/+$/, ''),
+      token: String(s.gatewayToken || '').trim(),
+      ntfyUrl: withHttps(String(s.gatewayNtfyUrl || ''))
     };
   }
 
