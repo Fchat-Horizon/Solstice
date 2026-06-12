@@ -65,6 +65,10 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           # Use a monotonic build number from the run number.
           echo "build=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          # Unique, incrementing version per build (package version + run number). The bare package
+          # version is constant across rolling builds, so SideStore never saw a change and offered
+          # no update; stamping the run number makes each build newer than the last installed one.
+          echo "display=${version}.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Generate Xcode project
         working-directory: mobile/ios
@@ -98,7 +102,7 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build \
-            MARKETING_VERSION="${{ steps.version.outputs.version }}" \
+            MARKETING_VERSION="${{ steps.version.outputs.display }}" \
             CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             clean build
@@ -140,7 +144,7 @@ jobs:
         run: |
           cp "Solstice-${{ steps.version.outputs.version }}.ipa" Solstice.ipa
           URL="${{ github.server_url }}/${{ github.repository }}/releases/download/ios-latest/Solstice.ipa"
-          node - "${{ steps.version.outputs.version }}" "$(date -u +%Y-%m-%d)" "$(stat -f%z Solstice.ipa)" "$URL" <<'NODE'
+          node - "${{ steps.version.outputs.display }}" "$(date -u +%Y-%m-%d)" "$(stat -f%z Solstice.ipa)" "$URL" <<'NODE'
           const fs = require('fs');
           const [version, date, size, url] = process.argv.slice(2);
           const src = JSON.parse(fs.readFileSync('sidestore-source.json', 'utf8'));
