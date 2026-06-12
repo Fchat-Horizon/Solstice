@@ -39,7 +39,7 @@
  */
 import Axios from 'axios';
 import {ipcMain} from 'electron';
-import {init as initCore} from '../chat/core';
+import core, {init as initCore} from '../chat/core';
 import {AdCoordinatorHost} from '../chat/ads/ad-coordinator-host';
 import Socket from '../chat/WebSocket';
 import NativeSocketConnection from './NativeSocketConnection';
@@ -95,6 +95,16 @@ const themeContext = (require as any).context('../scss/themes/chat', false, /\.s
 const SocketProvider = (window as any).NativeSocket !== undefined ? NativeSocketConnection : Socket; //tslint:disable-line:no-any
 const connection = new Connection('Solstice (Mobile)', appVersion, SocketProvider);
 initCore(connection, new GeneralSettings() as any, Logs, SettingsStore, Notifications);
+
+// On iOS the native socket fires notifications for messages that arrive while the app is
+// backgrounded (JS is suspended then). Tell it which character and highlight terms to watch for;
+// PMs always notify, channel messages only on a match. Re-sent on every (re)connect.
+if ((window as any).NativeSocket !== undefined) { //tslint:disable-line:no-any
+    connection.onEvent('connected', () => {
+        const terms = [connection.character, ...(core.state.settings.highlightWords || [])];
+        (window as any).NativeSocket.setIdentity(connection.character, terms.join('\n')); //tslint:disable-line:no-any
+    });
+}
 
 // On desktop the ad coordinator host lives in the Electron main process; on mobile there
 // is no main process, so host it here in the WebView. Without this, the guest's

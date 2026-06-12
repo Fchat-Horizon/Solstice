@@ -1,5 +1,6 @@
 import UIKit
 import WebKit
+import UserNotifications
 
 // Native WebSocket transport for iOS, used instead of the browser WebSocket (chat/WebSocket.ts).
 //
@@ -20,6 +21,12 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
     private var closeEmitted = false
     private static let bufferCap = 3000
 
+    // Who to notify for while backgrounded (set from JS on connect). `character` is the logged-in
+    // character; `highlights` are lowercased terms (character name + highlight words) that make a
+    // channel message worth a notification.
+    private var character = ""
+    private var highlights: [String] = []
+
     override init() {
         super.init()
         let nc = NotificationCenter.default
@@ -35,6 +42,14 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         guard let call = BridgeCall(message) else { return replyHandler(nil, "bad call") }
         switch call.method {
         case "connect": connect(call.string(0)); replyHandler(nil, nil)
+        case "setIdentity":
+            character = call.string(0)
+            highlights = call.string(1)
+                .lowercased()
+                .split(separator: "\n")
+                .map { String($0) }
+                .filter { !$0.isEmpty }
+            replyHandler(nil, nil)
         case "send": task?.send(.string(call.string(0))) { _ in }; replyHandler(nil, nil)
         case "close":
             // Explicit close (e.g. logout): tear down and emit a clean close so the JS Connection's
@@ -93,6 +108,9 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
     // Main thread only, serialized with the lifecycle handlers below.
     private func deliver(_ text: String) {
         if inBackground {
+            // JS is suspended, so it can't fire notifications. Inspect PMs/highlights natively and
+            // post a local notification, then buffer the frame for the WebView to catch up on resume.
+            notifyIfNeeded(text)
             buffer.append(text)
             if buffer.count > Self.bufferCap {
                 buffer.removeFirst(buffer.count - Self.bufferCap)
@@ -100,6 +118,44 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         } else {
             emit("message", WebViewController.jsString(text))
         }
+    }
+
+    // Fire a local notification for an incoming PM (PRI) or a channel message (MSG) that mentions
+    // the character or a highlight term. F-List frames are "<3-char command> <json>".
+    private func notifyIfNeeded(_ frame: String) {
+        guard frame.count > 4 else { return }
+        let command = String(frame.prefix(3))
+        guard command == "PRI" || command == "MSG" else { return }
+        let jsonStart = frame.index(frame.startIndex, offsetBy: 4)
+        guard let data = String(frame[jsonStart...]).data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return }
+        let sender = (obj["character"] as? String) ?? ""
+        let message = stripBBCode((obj["message"] as? String) ?? "")
+        if command == "PRI" {
+            postNotification(title: sender, body: message, key: sender)
+        } else if sender.lowercased() != character.lowercased() {
+            let low = message.lowercased()
+            if highlights.contains(where: { low.contains($0) }) {
+                let channel = (obj["channel"] as? String) ?? ""
+                postNotification(title: "\(sender) in \(channel)", body: message, key: channel)
+            }
+        }
+    }
+
+    private func postNotification(title: String, body: String, key: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title.isEmpty ? "Solstice" : title
+        content.body = body
+        content.sound = .default
+        content.userInfo = ["data": key]
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
+    private func stripBBCode(_ s: String) -> String {
+        return s.replacingOccurrences(
+            of: "\\[/?[a-zA-Z]+(=[^\\]]*)?\\]", with: "", options: .regularExpression)
     }
 
     @objc private func didBackground() { inBackground = true }
