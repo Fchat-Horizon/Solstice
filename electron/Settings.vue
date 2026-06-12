@@ -1217,10 +1217,15 @@
       this.logDirectory = this.settings.logDirectory;
       this.logLevel = this.settings.risingSystemLogLevel;
       this.showTitle = this.settings.forceNativeWindowControls && !this.isMac;
-      this.availableThemes = fs
-        .readdirSync(path.join(__dirname, 'themes'))
-        .filter(x => x.substr(-4) === '.css')
-        .map(x => x.slice(0, -4));
+      // Desktop reads compiled theme CSS from disk; mobile has no such dir, so the bundled theme
+      // names are exposed by the mobile entry as window.__availableThemes (otherwise the picker is
+      // empty and selecting a theme appears to do nothing).
+      this.availableThemes = this.isMobile
+        ? (window as any).__availableThemes || [] //tslint:disable-line:no-any
+        : fs
+            .readdirSync(path.join(__dirname, 'themes'))
+            .filter(x => x.substr(-4) === '.css')
+            .map(x => x.slice(0, -4));
 
       remote.nativeTheme.on('updated', () => {
         this.osIsDark = remote.nativeTheme.shouldUseDarkColors;

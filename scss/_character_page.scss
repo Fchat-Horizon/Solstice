@@ -277,13 +277,19 @@
 // Shrink them so several fit per row.
 @media (max-width: 600px) {
   .character-images {
+    // Trim the per-thumbnail padding/margin too, otherwise the wrapper size alone still only
+    // fits two per row on a ~390px iOS viewport. These values fit 3-4 per row.
+    .character-image {
+      padding: 0.1em;
+    }
     .character-image-thumb-wrapper {
-      width: 110px;
-      height: 110px;
+      width: 96px;
+      height: 96px;
     }
     .img-thumbnail {
-      width: 100px;
-      height: 100px;
+      width: 90px;
+      height: 90px;
+      margin: 2px;
     }
   }
 }

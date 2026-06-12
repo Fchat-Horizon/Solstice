@@ -154,6 +154,8 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         // Android calls this from onPageFinished; bridge globals were already installed at
         // document-start, so we only need to announce the platform here.
         webView.evaluateJavaScript("window.setupPlatform && window.setupPlatform('ios')")
+        // Drop the keyboard "‹ › Done" accessory bar (the WKContentView exists by now).
+        webView.hideInputAccessoryBar()
     }
 
     // MARK: - WKUIDelegate (the web app uses alert()/confirm())

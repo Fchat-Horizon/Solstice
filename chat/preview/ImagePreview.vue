@@ -141,6 +141,11 @@
     async mounted(): Promise<void> {
       console.info('Mounted ImagePreview');
 
+      // Previews (both character and link) are disabled on mobile (Android and iOS): they are
+      // fiddly on touch, and tapping a name otherwise pops a loading preview. Skip the link DOM
+      // mutator and every preview event listener so this component stays completely inert.
+      if (document.documentElement.dataset.mobilePlatform === 'true') return;
+
       // tslint:disable-next-line:no-floating-promises
       this.jsMutator.init();
 

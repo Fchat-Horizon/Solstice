@@ -80,6 +80,14 @@ try {
 (window as any).require = (mod: string) =>
     mod === 'fs' ? require('fs') : mod === 'path' ? require('path') : undefined;
 
+// Expose the bundled chat theme names so the Settings theme picker has options on mobile (the
+// desktop path lists them from disk via fs, which doesn't exist in the WebView).
+//tslint:disable-next-line:no-require-imports no-any
+const themeContext = (require as any).context('../scss/themes/chat', false, /\.scss$/);
+(window as any).__availableThemes = themeContext.keys() //tslint:disable-line:no-any
+    .map((k: string) => k.replace(/^\.\//, '').replace(/\.scss$/, ''))
+    .sort();
+
 // On iOS the WebSocket runs natively (NativeSocket.swift) so it survives backgrounding; bridge.js
 // defines window.NativeSocket there. Android keeps the connection alive via its foreground service,
 // so it uses the in-WebView browser socket. window.NativeSocket is set at document-start, before
