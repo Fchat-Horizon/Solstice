@@ -107,6 +107,8 @@ export default class Connection implements Interfaces.Connection {
         method: 'ticket',
         ticket: this.ticket
       });
+      if (this.socket !== undefined && this.socket.nativeKeepalive === true)
+        return;
       this.resetPinTimeout();
     });
     this.socket.onMessage(async (msg: string) => {
@@ -333,8 +335,13 @@ export default class Connection implements Interfaces.Connection {
         this.vars[<keyof Interfaces.Vars>data.variable] = data.value;
         break;
       case 'PIN':
-        this.send('PIN');
-        this.resetPinTimeout();
+        // The iOS native socket answers PIN itself (so the connection survives while the WebView
+        // is suspended); when it does, skip the JS reply/timeout to avoid a double-PIN and a stale
+        // 90s timeout that would close the still-alive native connection on resume.
+        if (this.socket === undefined || this.socket.nativeKeepalive !== true) {
+          this.send('PIN');
+          this.resetPinTimeout();
+        }
         break;
       case 'ERR':
         if (fatalErrors.indexOf(data.number) !== -1) {

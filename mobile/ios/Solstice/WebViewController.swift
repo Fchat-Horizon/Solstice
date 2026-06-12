@@ -19,6 +19,7 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
     private let nativeNotification = NativeNotification()
     private let nativeClipboard = NativeClipboard()
     private let nativeBackground = NativeBackground()
+    private let nativeSocket = NativeSocket()
     private lazy var nativeView = NativeView(host: self)
 
     // Matches the Android profileRegex — f-list.net profile links are shown in the in-app
@@ -49,6 +50,8 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         ucc.addScriptMessageHandler(nativeNotification, contentWorld: .page, name: "nativeNotification")
         ucc.addScriptMessageHandler(nativeClipboard, contentWorld: .page, name: "nativeClipboard")
         ucc.addScriptMessageHandler(nativeBackground, contentWorld: .page, name: "nativeBackground")
+        nativeSocket.host = self
+        ucc.addScriptMessageHandler(nativeSocket, contentWorld: .page, name: "nativeSocket")
         ucc.addScriptMessageHandler(nativeView, contentWorld: .page, name: "nativeView")
         config.userContentController = ucc
 
@@ -251,5 +254,13 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         json.removeFirst()  // drop leading [
         json.removeLast()   // drop trailing ]
         return json
+    }
+
+    /// Run JS in the web view from any thread (hops to the main thread). Used by NativeSocket to
+    /// push socket events to the page.
+    func evalJS(_ js: String) {
+        DispatchQueue.main.async { [weak self] in
+            self?.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
     }
 }

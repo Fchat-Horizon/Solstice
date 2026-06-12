@@ -42,6 +42,7 @@ import {ipcMain} from 'electron';
 import {init as initCore} from '../chat/core';
 import {AdCoordinatorHost} from '../chat/ads/ad-coordinator-host';
 import Socket from '../chat/WebSocket';
+import NativeSocketConnection from './NativeSocketConnection';
 import Connection from '../fchat/connection';
 import {appVersion, GeneralSettings, Logs, SettingsStore} from './filesystem';
 import Index from './Index.vue';
@@ -79,7 +80,12 @@ try {
 (window as any).require = (mod: string) =>
     mod === 'fs' ? require('fs') : mod === 'path' ? require('path') : undefined;
 
-const connection = new Connection('Solstice (Mobile)', appVersion, Socket);
+// On iOS the WebSocket runs natively (NativeSocket.swift) so it survives backgrounding; bridge.js
+// defines window.NativeSocket there. Android keeps the connection alive via its foreground service,
+// so it uses the in-WebView browser socket. window.NativeSocket is set at document-start, before
+// this runs, so it is a reliable iOS check.
+const SocketProvider = (window as any).NativeSocket !== undefined ? NativeSocketConnection : Socket; //tslint:disable-line:no-any
+const connection = new Connection('Solstice (Mobile)', appVersion, SocketProvider);
 initCore(connection, new GeneralSettings() as any, Logs, SettingsStore, Notifications);
 
 // On desktop the ad coordinator host lives in the Electron main process; on mobile there
