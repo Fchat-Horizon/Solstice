@@ -46,6 +46,7 @@ import Connection from '../fchat/connection';
 import {appVersion, GeneralSettings, Logs, SettingsStore} from './filesystem';
 import Index from './Index.vue';
 import Notifications from './notifications';
+import {gateway} from './gateway';
 
 const version = (<{version: string}>require('./package.json')).version; //tslint:disable-line:no-require-imports
 (<any>window)['setupPlatform'] = (platform: string) => { //tslint:disable-line:no-any
@@ -89,6 +90,12 @@ initCore(connection, new GeneralSettings() as any, Logs, SettingsStore, Notifica
 const adCoordinator = new AdCoordinatorHost();
 ipcMain.on('request-send-ad', (event: any, adId: string) => //tslint:disable-line:no-any
     adCoordinator.processAdRequest(event, adId));
+
+// Foreground/background handling lives in the gateway client so one place coordinates both the
+// reconnect-on-resume (iOS, where the suspended socket comes back dead) and the optional gateway
+// hand-off (close the connection while backgrounded and let a server push notifications). Wire up
+// its visibility listener once; it reads live settings and no-ops until the user enables it.
+gateway.init();
 
 new Index({ //tslint:disable-line:no-unused-expression
     el: '#app'

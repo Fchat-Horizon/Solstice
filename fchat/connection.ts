@@ -152,6 +152,25 @@ export default class Connection implements Interfaces.Connection {
           : 10000;
   }
 
+  /**
+   * Force an immediate reconnect, e.g. when the app returns from the background. On iOS the
+   * WebView is suspended while backgrounded, so the socket dies (and can come back reporting
+   * OPEN but dead); otherwise the only thing that notices is the 90s PIN timeout. This skips
+   * that wait. No-op if the connection was cleanly closed with nothing pending.
+   */
+  forceReconnect(): void {
+    if (this.character === '') return;
+    this.reconnectDelay = 0;
+    if (this.socket !== undefined) {
+      this.cleanClose = false;
+      this.socket.close();
+    } else if (this.reconnectTimer !== undefined) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+      void this.connect(this.character);
+    }
+  }
+
   close(keepState: boolean = true): void {
     if (this.reconnectTimer !== undefined) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = undefined;
