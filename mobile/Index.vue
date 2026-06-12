@@ -26,14 +26,6 @@
                             </div>
                         </div>
                     </div>
-                    <div class="mb-3" v-show="showAdvanced">
-                        <label for="gatewayEnabled"><input type="checkbox" id="gatewayEnabled" v-model="settings.gatewayEnabled"/> Background notifications (gateway)</label>
-                        <div v-show="settings.gatewayEnabled" style="margin-top:6px">
-                            <input class="form-control" style="margin-bottom:6px" placeholder="Gateway URL (https://...)" v-model="settings.gatewayUrl" :disabled="loggingIn"/>
-                            <input class="form-control" type="password" style="margin-bottom:6px" placeholder="Gateway token" v-model="settings.gatewayToken" :disabled="loggingIn"/>
-                            <input class="form-control" placeholder="ntfy topic URL (https://ntfy.sh/...)" v-model="settings.gatewayNtfyUrl" :disabled="loggingIn"/>
-                        </div>
-                    </div>
                     <div class="mb-3">
                         <label class="control-label" for="theme">{{l('settings.theme')}}</label>
                         <select class="form-select form-select" id="theme" v-model="settings.theme">
@@ -79,7 +71,6 @@
     import {SimpleCharacter} from '../interfaces';
     import CharacterPage from '../site/character_page/character_page.vue';
     import {appVersion, GeneralSettings, getGeneralSettings, setGeneralSettings, SettingsStore} from './filesystem';
-    import {gateway} from './gateway';
     import AppSettingsDialog from './AppSettingsDialog.vue';
     import AppExporterDialog from './AppExporterDialog.vue';
     import UpdateBanner from './UpdateBanner.vue';
@@ -140,9 +131,7 @@
                         self.error = data.error;
                         return;
                     }
-                    // Persist when saving login, or whenever the gateway is enabled (its URL/token/
-                    // topic must survive a restart for background notifications to keep working).
-                    if(self.saveLogin || self.settings.gatewayEnabled) await setGeneralSettings(self.settings);
+                    if(self.saveLogin) await setGeneralSettings(self.settings);
                     Socket.host = self.settings.host;
                     core.connection.setCredentials(self.settings.account, self.settings.password);
                     core.connection.onEvent('connected', () => {
@@ -164,12 +153,10 @@
                         };
                         document.addEventListener('backbutton', self.backButtonHandler);
                         NativeBackground.start();
-                        gateway.onConnected(self.settings.account, self.settings.password, core.connection.character);
                     });
                     core.connection.onEvent('closed', () => {
                         document.removeEventListener('backbutton', self.backButtonHandler!);
                         NativeBackground.stop();
-                        gateway.onDisconnected();
                     });
                     self.characters = Object.keys(data.characters).map((name) => ({name, id: data.characters[name], deleted: false}))
                         .sort((x: SimpleCharacter, y: SimpleCharacter) => x.name.localeCompare(y.name));

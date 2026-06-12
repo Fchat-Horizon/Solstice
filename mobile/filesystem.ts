@@ -44,13 +44,6 @@ export class GeneralSettings {
     showSeconds = false;
     // Whether the in-app update check should also surface prereleases (betas).
     updateCheckPrereleases = false;
-    // Optional self-hosted notify gateway (see the fchat-gateway project). When enabled, the app
-    // hands its character to the gateway while backgrounded so it can push PMs/highlights via ntfy,
-    // instead of holding the battery-hungry WebSocket open (which iOS suspends anyway).
-    gatewayEnabled = false;
-    gatewayUrl = '';
-    gatewayToken = '';
-    gatewayNtfyUrl = '';
 }
 
 type Index = {[key: string]: {name: string, dates: number[]} | undefined};

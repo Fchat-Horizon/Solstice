@@ -269,7 +269,6 @@ export namespace Connection {
     ): void;
     connect(character: string): void;
     close(keepState?: boolean): void;
-    forceReconnect(): void;
     onMessage<K extends keyof ServerCommands>(
       type: K,
       handler: CommandHandler<K>
