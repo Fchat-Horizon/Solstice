@@ -64,6 +64,10 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         webView.allowsBackForwardNavigationGestures = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.bounces = false
+        // The page is height:100% with its own inner scrolling lists, so the main scroll view never
+        // needs to scroll. Disabling it stops WKWebView's keyboard "scroll the field into view" from
+        // shoving the whole UI down and sliding it back. Inner overflow:auto lists still scroll.
+        webView.scrollView.isScrollEnabled = false
         webView.isOpaque = false
         webView.backgroundColor = .black
         if #available(iOS 16.4, *) { webView.isInspectable = true }
