@@ -97,12 +97,18 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         super.viewDidLoad()
         UNUserNotificationCenter.current().delegate = self
 
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(keyboardWillChange(_:)),
-            name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(keyboardWillChange(_:)),
-            name: UIResponder.keyboardWillHideNotification, object: nil)
+        // On iOS 17+ the viewport's interactive-widget=resizes-content shrinks the page above the
+        // keyboard, so we must NOT also resize the web view frame ourselves (that double-handling is
+        // what slid the UI). Only fall back to the native keyboard resize on iOS < 17, where
+        // interactive-widget is ignored.
+        if #unavailable(iOS 17.0) {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(keyboardWillChange(_:)),
+                name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(keyboardWillChange(_:)),
+                name: UIResponder.keyboardWillHideNotification, object: nil)
+        }
 
         if let indexURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "www") {
             webView.loadFileURL(indexURL, allowingReadAccessTo: indexURL.deletingLastPathComponent())
