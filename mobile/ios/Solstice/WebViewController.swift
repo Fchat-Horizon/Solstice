@@ -11,9 +11,6 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
 
     private(set) var webView: WKWebView!
     private var bottomConstraint: NSLayoutConstraint!
-    // Keeps WKWebView's self-applied keyboard contentInset zeroed (we handle the keyboard via the
-    // frame resize); retained so the observation stays alive.
-    private var contentInsetObservation: NSKeyValueObservation?
 
     // Native bridges. Retained here for clarity even though WKUserContentController also
     // retains its message handlers.
@@ -64,10 +61,6 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         webView.allowsBackForwardNavigationGestures = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.bounces = false
-        // The page is height:100% with its own inner scrolling lists, so the main scroll view never
-        // needs to scroll. Disabling it stops WKWebView's keyboard "scroll the field into view" from
-        // shoving the whole UI down and sliding it back. Inner overflow:auto lists still scroll.
-        webView.scrollView.isScrollEnabled = false
         webView.isOpaque = false
         webView.backgroundColor = .black
         if #available(iOS 16.4, *) { webView.isInspectable = true }
@@ -84,31 +77,18 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
             bottomConstraint
         ])
         self.webView = webView
-
-        // WKWebView re-applies a bottom contentInset when the keyboard shows (even though we resize
-        // the frame ourselves); force it back to zero so it never double-shifts the content.
-        contentInsetObservation = webView.scrollView.observe(\.contentInset, options: [.new]) {
-            scrollView, _ in
-            if scrollView.contentInset != .zero { scrollView.contentInset = .zero }
-        }
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         UNUserNotificationCenter.current().delegate = self
 
-        // On iOS 17+ the viewport's interactive-widget=resizes-content shrinks the page above the
-        // keyboard, so we must NOT also resize the web view frame ourselves (that double-handling is
-        // what slid the UI). Only fall back to the native keyboard resize on iOS < 17, where
-        // interactive-widget is ignored.
-        if #unavailable(iOS 17.0) {
-            NotificationCenter.default.addObserver(
-                self, selector: #selector(keyboardWillChange(_:)),
-                name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
-            NotificationCenter.default.addObserver(
-                self, selector: #selector(keyboardWillChange(_:)),
-                name: UIResponder.keyboardWillHideNotification, object: nil)
-        }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardWillChange(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardWillChange(_:)),
+            name: UIResponder.keyboardWillHideNotification, object: nil)
 
         if let indexURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "www") {
             webView.loadFileURL(indexURL, allowingReadAccessTo: indexURL.deletingLastPathComponent())
@@ -137,23 +117,8 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         let converted = view.convert(end, from: nil)
         let overlap = isHiding ? 0 : max(0, view.bounds.maxY - converted.minY)
         bottomConstraint.constant = -overlap
-
-        // Our frame resize already lifts the page's fixed input bar above the keyboard. WKWebView
-        // ALSO runs its own avoidance (a bottom contentInset + scroll-to-input); stacked on ours it
-        // over-shifts the content and slides back. Keep its insets at zero so only our resize moves
-        // things. (A KVO observer re-zeros it because WKWebView re-applies it after this notification.)
-        webView.scrollView.contentInset = .zero
-        webView.scrollView.verticalScrollIndicatorInsets = .zero
-
-        // Animate frame-synced with the keyboard: match its duration AND curve (the curve raw value
-        // packs into UIView.AnimationOptions at bits 16-17).
         let duration = (note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
-        let curveRaw = (note.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt)
-            ?? UInt(UIView.AnimationCurve.easeInOut.rawValue)
-        let options = UIView.AnimationOptions(rawValue: curveRaw << 16).union(.beginFromCurrentState)
-        UIView.animate(withDuration: duration, delay: 0, options: options) {
-            self.view.layoutIfNeeded()
-        }
+        UIView.animate(withDuration: duration) { self.view.layoutIfNeeded() }
     }
 
     // MARK: - WKNavigationDelegate
