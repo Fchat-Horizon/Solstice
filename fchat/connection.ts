@@ -111,7 +111,7 @@ export default class Connection implements Interfaces.Connection {
         return;
       this.resetPinTimeout();
     });
-    this.socket.onMessage(async (msg: string) => {
+    this.socket.onMessage(async (msg: string, receivedAt?: number) => {
       const type = <keyof Interfaces.ServerCommands>msg.substr(0, 3);
       const data =
         msg.length > 6 ? <object>JSON.parse(msg.substr(4)) : undefined;
@@ -121,7 +121,7 @@ export default class Connection implements Interfaces.Connection {
         data
       });
 
-      return this.handleMessage(type, data);
+      return this.handleMessage(type, data, receivedAt);
     });
     this.socket.onClose(async (event: CloseEvent) => {
       log.debug('socket.onclose', {
@@ -322,9 +322,12 @@ export default class Connection implements Interfaces.Connection {
   //tslint:disable:no-unsafe-any no-any
   protected async handleMessage<T extends keyof Interfaces.ServerCommands>(
     type: T,
-    data: any
+    data: any,
+    receivedAt?: number
   ): Promise<void> {
-    const time = new Date();
+    // `receivedAt` (ms) is set for frames the iOS native socket buffered while backgrounded and
+    // replayed on resume, so they keep their real arrival time instead of being stamped "now".
+    const time = receivedAt !== undefined ? new Date(receivedAt) : new Date();
     const handlers = <Interfaces.CommandHandler<T>[] | undefined>(
       this.messageHandlers[type]
     );

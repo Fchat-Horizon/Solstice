@@ -31,7 +31,10 @@ export default class NativeSocketConnection implements WebSocketConnection {
   private state: WebSocketConnection.ReadyState =
     WebSocketConnection.ReadyState.CONNECTING;
   private lastHandler: Promise<void> = Promise.resolve();
-  private messageHandler?: (message: string) => Promise<void>;
+  private messageHandler?: (
+    message: string,
+    receivedAt?: number
+  ) => Promise<void>;
   private openHandler?: () => void;
   private closeHandler?: (e: CloseEvent) => void;
   private errorHandler?: (error: Error) => void;
@@ -41,11 +44,11 @@ export default class NativeSocketConnection implements WebSocketConnection {
     void NativeSocket.connect(Socket.host);
   }
 
-  static deliver(type: string, payload: unknown): void {
-    NativeSocketConnection.current?.handle(type, payload);
+  static deliver(type: string, payload: unknown, receivedAt?: number): void {
+    NativeSocketConnection.current?.handle(type, payload, receivedAt);
   }
 
-  private handle(type: string, payload: unknown): void {
+  private handle(type: string, payload: unknown, receivedAt?: number): void {
     switch (type) {
       case 'open':
         this.state = WebSocketConnection.ReadyState.OPEN;
@@ -55,9 +58,11 @@ export default class NativeSocketConnection implements WebSocketConnection {
         if (this.messageHandler !== undefined) {
           const handler = this.messageHandler;
           const text = String(payload);
+          // Present for replayed (buffered) frames so they keep their real arrival time.
+          const at = typeof receivedAt === 'number' ? receivedAt : undefined;
           this.lastHandler = this.lastHandler.then(
-            () => handler(text),
-            () => handler(text)
+            () => handler(text, at),
+            () => handler(text, at)
           );
         }
         break;
@@ -97,7 +102,9 @@ export default class NativeSocketConnection implements WebSocketConnection {
     void NativeSocket.close();
   }
 
-  onMessage(handler: (message: string) => Promise<void>): void {
+  onMessage(
+    handler: (message: string, receivedAt?: number) => Promise<void>
+  ): void {
     this.messageHandler = handler;
   }
 
@@ -118,6 +125,10 @@ export default class NativeSocketConnection implements WebSocketConnection {
   }
 }
 
-// Native (NativeSocket.swift) pushes socket events here.
-(window as any).__nativeSocketEvent = (type: string, payload: unknown): void => //tslint:disable-line:no-any
-  NativeSocketConnection.deliver(type, payload);
+// Native (NativeSocket.swift) pushes socket events here. `receivedAt` (ms) is present only for
+// replayed frames so they keep their real arrival time.
+(window as any).__nativeSocketEvent = ( //tslint:disable-line:no-any
+  type: string,
+  payload: unknown,
+  receivedAt?: number
+): void => NativeSocketConnection.deliver(type, payload, receivedAt);

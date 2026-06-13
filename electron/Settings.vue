@@ -1306,6 +1306,12 @@
       },
 
       loadAvailableSoundThemes(): void {
+        if (this.isMobile) {
+          // Mobile has no themes dir to read; the bundled names are exposed by the entry.
+          this.availableSoundThemes = (window as any)
+            .__availableSoundThemes || ['default']; //tslint:disable-line:no-any
+          return;
+        }
         try {
           const soundThemesPath = path.join(__dirname, 'sound-themes');
           this.availableSoundThemes = fs

@@ -417,7 +417,9 @@ export namespace WebSocketConnection {
 
 export interface WebSocketConnection {
   close(): void;
-  onMessage(handler: (message: string) => Promise<void>): void;
+  onMessage(
+    handler: (message: string, receivedAt?: number) => Promise<void>
+  ): void;
   onOpen(handler: () => void): void;
   onClose(handler: (e: CloseEvent) => void): void;
   onError(handler: (error: Error) => void): void;

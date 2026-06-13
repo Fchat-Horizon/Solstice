@@ -39,7 +39,7 @@
   ]);
 
   window.NativeNotification = make('nativeNotification', [
-    'notify', 'playSound', 'requestPermission'
+    'notify', 'playSound', 'requestPermission', 'setSoundTheme'
   ]);
 
   window.NativeClipboard = make('nativeClipboard', ['writeText', 'readText']);

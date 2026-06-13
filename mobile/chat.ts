@@ -88,6 +88,13 @@ const themeContext = (require as any).context('../scss/themes/chat', false, /\.s
     .map((k: string) => k.replace(/^\.\//, '').replace(/\.scss$/, ''))
     .sort();
 
+// Same for the sound themes (audiopacks): the Settings sound-theme picker lists these on mobile.
+//tslint:disable-next-line:no-require-imports no-any
+const soundThemeContext = (require as any).context('../chat/sound-themes', true, /sound\.json$/);
+(window as any).__availableSoundThemes = soundThemeContext.keys() //tslint:disable-line:no-any
+    .map((k: string) => k.replace(/^\.\//, '').replace(/\/sound\.json$/, ''))
+    .sort();
+
 // On iOS the WebSocket runs natively (NativeSocket.swift) so it survives backgrounding; bridge.js
 // defines window.NativeSocket there. Android keeps the connection alive via its foreground service,
 // so it uses the in-WebView browser socket. window.NativeSocket is set at document-start, before
@@ -103,6 +110,11 @@ if ((window as any).NativeSocket !== undefined) { //tslint:disable-line:no-any
     connection.onEvent('connected', () => {
         const terms = [connection.character, ...(core.state.settings.highlightWords || [])];
         (window as any).NativeSocket.setIdentity(connection.character, terms.join('\n')); //tslint:disable-line:no-any
+        // Prime the native sound theme so background notifications use it even before any sound has
+        // played in the foreground.
+        const soundTheme = (core.state as any).generalSettings?.soundTheme //tslint:disable-line:no-any
+            || core.state.settings.soundTheme || 'default';
+        (window as any).NativeNotification.setSoundTheme(soundTheme); //tslint:disable-line:no-any
     });
 }
 

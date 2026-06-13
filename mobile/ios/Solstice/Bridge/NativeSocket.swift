@@ -17,7 +17,9 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
     private var session: URLSession?
     private var task: URLSessionWebSocketTask?
     private var inBackground = false
-    private var buffer: [String] = []
+    // Buffered frames carry the time they arrived, so the WebView can stamp them with their real
+    // arrival time on replay instead of the (later) resume time.
+    private var buffer: [(frame: String, timeMs: Int)] = []
     private var closeEmitted = false
     private static let bufferCap = 3000
 
@@ -111,7 +113,7 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
             // JS is suspended, so it can't fire notifications. Inspect PMs/highlights natively and
             // post a local notification, then buffer the frame for the WebView to catch up on resume.
             notifyIfNeeded(text)
-            buffer.append(text)
+            buffer.append((text, Int(Date().timeIntervalSince1970 * 1000)))
             if buffer.count > Self.bufferCap {
                 buffer.removeFirst(buffer.count - Self.bufferCap)
             }
@@ -147,7 +149,8 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         let content = UNMutableNotificationContent()
         content.title = title.isEmpty ? "Solstice" : title
         content.body = body
-        content.sound = .default
+        // The current theme's PM/highlight sound (copied to Library/Sounds), or the system default.
+        content.sound = SoundThemes.notificationSound(for: "attention")
         content.userInfo = ["data": key]
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
@@ -164,7 +167,9 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         inBackground = false
         let pending = buffer
         buffer.removeAll()
-        for frame in pending { emit("message", WebViewController.jsString(frame)) }
+        for entry in pending {
+            emit("message", WebViewController.jsString(entry.frame), String(entry.timeMs))
+        }
     }
 
     private func closeSocket() {
@@ -200,7 +205,8 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         emit("close", payload)
     }
 
-    private func emit(_ type: String, _ payloadJS: String) {
-        host?.evalJS("window.__nativeSocketEvent && window.__nativeSocketEvent('\(type)', \(payloadJS))")
+    private func emit(_ type: String, _ payloadJS: String, _ extraJS: String? = nil) {
+        let extra = extraJS.map { ", \($0)" } ?? ""
+        host?.evalJS("window.__nativeSocketEvent && window.__nativeSocketEvent('\(type)', \(payloadJS)\(extra))")
     }
 }

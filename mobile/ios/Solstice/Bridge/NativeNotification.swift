@@ -25,6 +25,9 @@ final class NativeNotification: NSObject, WKScriptMessageHandlerWithReply, AVAud
         case "playSound":
             playSound(call.string(0))
             replyHandler(nil, nil)
+        case "setSoundTheme":
+            SoundThemes.setTheme(call.string(0))
+            replyHandler(nil, nil)
         case "requestPermission":
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
             replyHandler(nil, nil)
@@ -82,7 +85,7 @@ final class NativeNotification: NSObject, WKScriptMessageHandlerWithReply, AVAud
     }
 
     private func playSound(_ name: String) {
-        guard let url = Bundle.main.url(forResource: name, withExtension: "mp3", subdirectory: "www/sounds") else { return }
+        guard let url = SoundThemes.playerURL(for: name) else { return }
         do {
             // .playback so notification sounds are audible even with the ring switch on
             // silent — matching the Android USAGE_MEDIA stream.
