@@ -12,6 +12,15 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
     private(set) var webView: WKWebView!
     private var bottomConstraint: NSLayoutConstraint!
 
+    // When the keyboard opens, WKWebView's built-in caret-avoidance programmatically scrolls the
+    // document down (negative contentOffset). Stacked on top of our own keyboard frame-resize below,
+    // that makes the whole page visibly drop and spring back every time the keyboard appears. The app
+    // is a fixed-height SPA whose lists scroll in inner elements, so the outer scroll view must always
+    // sit at the top; we pin it there. isScrollEnabled / bounces=false do NOT stop this because the
+    // offset is set programmatically, not by a drag. KVO fires synchronously before the next render,
+    // so WebKit's shove never actually paints.
+    private var contentOffsetObservation: NSKeyValueObservation?
+
     // Native bridges. Retained here for clarity even though WKUserContentController also
     // retains its message handlers.
     private let nativeFile = NativeFile()
@@ -77,6 +86,13 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
             bottomConstraint
         ])
         self.webView = webView
+
+        // Keep the outer document offset pinned to the top (see contentOffsetObservation above). The
+        // observer resets the offset synchronously, so the keyboard's caret-avoidance scroll is
+        // cancelled before it can paint, eliminating the page slide.
+        contentOffsetObservation = webView.scrollView.observe(\.contentOffset, options: [.new]) { scrollView, _ in
+            if scrollView.contentOffset.y != 0 { scrollView.contentOffset.y = 0 }
+        }
     }
 
     override func viewDidLoad() {
