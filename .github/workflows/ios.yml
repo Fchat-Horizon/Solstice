@@ -5,7 +5,7 @@ name: Build iOS (SideStore)
 # the NativeLogs unit tests, ad-hoc signs the app, and produces an unsigned-by-SideStore .ipa.
 #
 # The .ipa is published two ways: as a private workflow artifact (collaborators only), and
-# — on pushes to feat/ios-support — to a rolling pre-release (tag `ios-latest`) with a STABLE
+# on pushes to development, to a rolling pre-release (tag `ios-latest`) with a STABLE
 # download URL so it can be installed one-tap on-device (tap the link -> Open in LiveContainer,
 # or add the SideStore source). The pre-release is marked prerelease + make_latest:false so it
 # never hijacks the Android "Latest" release. There is intentionally no `tags` trigger, so
@@ -16,7 +16,7 @@ permissions:
 
 on:
   push:
-    branches: [feat/ios-support]
+    branches: [development]
   pull_request:
     paths:
       - 'mobile/**'
@@ -137,9 +137,9 @@ jobs:
           if-no-files-found: error
 
       # One-tap on-device install: stable-named .ipa + a SideStore source pointing at it.
-      # Only on direct pushes to the iOS branch (never PRs).
+      # Only on direct pushes to development (never PRs).
       - name: Prepare rolling-release assets
-        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/ios-support'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/development'
         working-directory: mobile/ios
         run: |
           cp "Solstice-${{ steps.version.outputs.version }}.ipa" Solstice.ipa
@@ -157,7 +157,7 @@ jobs:
           NODE
 
       - name: Publish rolling pre-release (ios-latest)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/ios-support'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/development'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ios-latest
@@ -165,7 +165,7 @@ jobs:
           make_latest: 'false'
           name: iOS test build (latest)
           body: |
-            Rolling, ad-hoc-signed iOS **test** build of the latest `feat/ios-support` commit —
+            Rolling, ad-hoc-signed iOS **test** build of the latest `development` commit,
             not an official release. SideStore/LiveContainer re-signs it on-device.
 
             **Install (one-tap):** open `Solstice.ipa` below on your iPhone and choose
