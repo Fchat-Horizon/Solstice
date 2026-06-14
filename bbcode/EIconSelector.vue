@@ -397,9 +397,9 @@
 
       toggleFavorite(eicon: string): void {
         if (eicon in core.state.favoriteEIcons) {
-          delete core.state.favoriteEIcons[eicon];
+          this.$delete(core.state.favoriteEIcons, eicon);
         } else {
-          core.state.favoriteEIcons[eicon] = true;
+          this.$set(core.state.favoriteEIcons, eicon, true);
         }
 
         void core.settingsStore.set(
@@ -407,7 +407,11 @@
           core.state.favoriteEIcons
         );
 
-        this.$forceUpdate();
+        // Refresh the favorites list so an un-favorited icon disappears; matches
+        // forceAddFavorite()/forceRemove(). Replaces this.$forceUpdate(), which
+        // forced a re-render of the <draggable> list against unchanged data and
+        // froze the WebView (Android ANR) when pinning from the favorites view.
+        if (this.search === 'category:favorites') this.runSearch();
       },
 
       deleteRecent(eicon: string): void {
