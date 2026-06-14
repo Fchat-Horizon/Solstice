@@ -72,7 +72,11 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         webView.scrollView.bounces = false
         webView.isOpaque = false
         webView.backgroundColor = .black
+        // Debug builds only: don't expose the WebView to Safari Web Inspector in shipped/Release
+        // builds (CI builds -configuration Release, where DEBUG is undefined).
+        #if DEBUG
         if #available(iOS 16.4, *) { webView.isInspectable = true }
+        #endif
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
 

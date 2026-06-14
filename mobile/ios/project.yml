@@ -65,6 +65,9 @@ targets:
         # Required so the test target's `@testable import Solstice` works.
         debug:
           ENABLE_TESTABILITY: "YES"
+          # Define DEBUG so `#if DEBUG` gates (e.g. webView.isInspectable) compile in for local
+          # debug builds but not the Release builds CI ships.
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
 
   SolsticeTests:
     type: bundle.unit-test
