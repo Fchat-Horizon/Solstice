@@ -4,21 +4,23 @@ name: Build iOS (SideStore)
 # web bundle, generates the Xcode project from mobile/ios/project.yml with XcodeGen, runs
 # the NativeLogs unit tests, ad-hoc signs the app, and produces an unsigned-by-SideStore .ipa.
 #
-# The .ipa is published three ways: as a private workflow artifact (collaborators only); on pushes
-# to development, to a rolling pre-release (tag `ios-latest`) with a STABLE download URL so it can be
-# installed one-tap on-device (tap the link -> Open in LiveContainer, or add the SideStore source);
-# and on a `v*` release tag, attached to that version's GitHub release alongside the Android APKs, so
-# anyone who wants to sideload a release build can. The rolling pre-release is marked
-# prerelease + make_latest:false so it never hijacks the Android "Latest" release. The release-tag
-# attachment only uploads the asset (gh release upload) and never touches the release's draft state,
-# so the Android release pipeline (build.yml) is unaffected.
+# This builds on a `v*` release tag (a version push), on pull requests that touch the mobile/shared
+# code (verification only, no publish), and on manual dispatch. It deliberately does NOT build on
+# every push to development, so routine commits don't burn a macOS build.
+#
+# On a version tag the .ipa is published two ways: to the pre-release `ios-latest` with a STABLE
+# download URL for the SideStore source (one-tap install + updates), and attached to that version's
+# GitHub release alongside the Android APKs. The `ios-latest` pre-release is marked
+# prerelease + make_latest:false so it never hijacks the Android "Latest" release, and the release-tag
+# attachment only uploads the asset (gh release upload) without touching the release's draft state, so
+# the Android release pipeline (build.yml) is unaffected. Every run also archives the .ipa as a
+# private workflow artifact.
 
 permissions:
   contents: write
 
 on:
   push:
-    branches: [development]
     tags: ['v[0-9]*']
   pull_request:
     paths:
@@ -140,9 +142,9 @@ jobs:
           if-no-files-found: error
 
       # One-tap on-device install: stable-named .ipa + a SideStore source pointing at it.
-      # Only on direct pushes to development (never PRs).
+      # Only on a version push (a `v*` release tag), never on PRs.
       - name: Prepare rolling-release assets
-        if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         working-directory: mobile/ios
         run: |
           cp "Solstice-${{ steps.version.outputs.version }}.ipa" Solstice.ipa
@@ -160,7 +162,7 @@ jobs:
           NODE
 
       - name: Publish rolling pre-release (ios-latest)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ios-latest
