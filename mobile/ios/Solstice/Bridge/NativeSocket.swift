@@ -145,7 +145,7 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
 
         if command == "PRI" {
             if mutedPrivates.contains(senderLow) { return }
-            postNotification(title: sender, body: message, key: sender)
+            postNotification(title: sender, body: message, key: sender, avatar: sender)
             return
         }
 
@@ -162,7 +162,7 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         let title = cfg?.title ?? rawChannel
         // byKey resolves channels off channelMap, which is keyed by the raw channel id; "#" + the
         // frame's channel is exactly the lookup chat/conversations.ts uses, so a tap always routes.
-        postNotification(title: "\(sender) in \(title)", body: message, key: "#\(rawChannel)")
+        postNotification(title: "\(sender) in \(title)", body: message, key: "#\(rawChannel)", avatar: sender)
     }
 
     // Parse the background-notify config pushed from JS into the matcher state above.
@@ -208,7 +208,7 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         return regex.firstMatch(in: text, options: [], range: NSRange(text.startIndex..., in: text)) != nil
     }
 
-    private func postNotification(title: String, body: String, key: String) {
+    private func postNotification(title: String, body: String, key: String, avatar: String) {
         let content = UNMutableNotificationContent()
         content.title = title.isEmpty ? "Solstice" : title
         content.body = body
@@ -218,8 +218,34 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         // Group per conversation so a busy (notify-on-every-message) channel collapses into one stack in
         // Notification Center instead of flooding it with separate banners.
         content.threadIdentifier = key
-        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+
+        func submit(_ attachments: [UNNotificationAttachment]) {
+            content.attachments = attachments
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+        }
+
+        // Show the sender's avatar as the notification image (mirrors the foreground path). f-list.net
+        // avatars live at a stable URL keyed by the lowercased name; percent-encode it so names with
+        // spaces still form a valid URL. The host process is kept alive (audio mode), so this download
+        // completes while backgrounded; if it fails we just post without an image.
+        let name = avatar.lowercased()
+        guard !name.isEmpty,
+              let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "https://static.f-list.net/images/avatar/\(encoded).png")
+        else { return submit([]) }
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            var attachments: [UNNotificationAttachment] = []
+            if let data = data {
+                let tmp = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("notif-avatar-\(UUID().uuidString).png")
+                if (try? data.write(to: tmp)) != nil,
+                   let attachment = try? UNNotificationAttachment(identifier: "avatar", url: tmp) {
+                    attachments.append(attachment)
+                }
+            }
+            DispatchQueue.main.async { submit(attachments) }
+        }.resume()
     }
 
     private func stripBBCode(_ s: String) -> String {
