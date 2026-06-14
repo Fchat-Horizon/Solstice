@@ -353,12 +353,10 @@
       }
     },
     mounted(): void {
-      // load pinned ids from localStorage (gracefully)
+      // Load persisted character pins (native-backed on mobile, localStorage on desktop).
       try {
-        const v = JSON.parse(localStorage.getItem('characterPins') || '[]');
-        this.pinnedIds = Array.isArray(v) ? v : [];
+        this.pinnedIds = this.loadCharacterPins();
       } catch (e) {
-        // if parsing fails, leave pinnedIds empty
         log.debug('characterPins.parseFailed', { error: e });
         this.pinnedIds = [];
       }
@@ -550,10 +548,35 @@
           ? this.pinnedIds.filter(id => id !== character.id)
           : [...this.pinnedIds, character.id];
         try {
-          localStorage.setItem('characterPins', JSON.stringify(this.pinnedIds));
+          this.saveCharacterPins();
         } catch (e) {
           log.debug('characterPins.saveFailed', { error: e });
         }
+      },
+
+      // Character pins persist in localStorage on desktop, but mobile WebViews don't keep it
+      // reliably: Android has DOM storage disabled, and iOS file:// localStorage isn't durable across
+      // launches. On mobile we store them in the native-backed general settings (mobile/filesystem.ts),
+      // the same mechanism the rest of the app persists with on device. Unknown keys survive there via
+      // _.merge on load, so no schema change is needed.
+      loadCharacterPins(): number[] {
+        if (document.documentElement.dataset.mobilePlatform === 'true') {
+          const gs = (window as any).__generalSettings; //tslint:disable-line:no-any
+          return Array.isArray(gs?.characterPins) ? gs.characterPins : [];
+        }
+        const v = JSON.parse(localStorage.getItem('characterPins') || '[]');
+        return Array.isArray(v) ? v : [];
+      },
+
+      saveCharacterPins(): void {
+        if (document.documentElement.dataset.mobilePlatform === 'true') {
+          const gs = (window as any).__generalSettings; //tslint:disable-line:no-any
+          if (gs === undefined) return;
+          gs.characterPins = this.pinnedIds;
+          void (window as any).__setGeneralSettings(gs); //tslint:disable-line:no-any
+          return;
+        }
+        localStorage.setItem('characterPins', JSON.stringify(this.pinnedIds));
       },
 
       // The top input is a simple filter; selecting a tile is done by clicking it.
