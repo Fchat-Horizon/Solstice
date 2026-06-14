@@ -47,6 +47,7 @@ import Connection from '../fchat/connection';
 import {appVersion, GeneralSettings, Logs, SettingsStore} from './filesystem';
 import Index from './Index.vue';
 import Notifications from './notifications';
+import {sendNotifyConfig} from './notifyConfig';
 
 const version = (<{version: string}>require('./package.json')).version; //tslint:disable-line:no-require-imports
 (<any>window)['setupPlatform'] = (platform: string) => { //tslint:disable-line:no-any
@@ -104,12 +105,13 @@ const connection = new Connection('Solstice (Mobile)', appVersion, SocketProvide
 initCore(connection, new GeneralSettings() as any, Logs, SettingsStore, Notifications);
 
 // On iOS the native socket fires notifications for messages that arrive while the app is
-// backgrounded (JS is suspended then). Tell it which character and highlight terms to watch for;
-// PMs always notify, channel messages only on a match. Re-sent on every (re)connect.
+// backgrounded (JS is suspended then). Push the full background-notify config (character, ignore/mute
+// lists, per-channel highlight/watched/notify settings and room titles) so native can reproduce the
+// foreground decision; mobile/Index.vue re-pushes it whenever that state changes. Re-sent on every
+// (re)connect.
 if ((window as any).NativeSocket !== undefined) { //tslint:disable-line:no-any
     connection.onEvent('connected', () => {
-        const terms = [connection.character, ...(core.state.settings.highlightWords || [])];
-        (window as any).NativeSocket.setIdentity(connection.character, terms.join('\n')); //tslint:disable-line:no-any
+        sendNotifyConfig();
         // Prime the native sound theme so background notifications use it even before any sound has
         // played in the foreground.
         const soundTheme = (core.state as any).generalSettings?.soundTheme //tslint:disable-line:no-any

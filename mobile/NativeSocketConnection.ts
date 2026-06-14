@@ -1,5 +1,6 @@
 import { WebSocketConnection } from '../fchat/interfaces';
 import Socket from '../chat/WebSocket';
+import core from '../chat/core';
 
 // iOS-only WebSocketConnection backed by the native URLSessionWebSocketTask bridge
 // (window.NativeSocket, see mobile/ios/Solstice/Bridge/NativeSocket.swift).
@@ -60,10 +61,28 @@ export default class NativeSocketConnection implements WebSocketConnection {
           const text = String(payload);
           // Present for replayed (buffered) frames so they keep their real arrival time.
           const at = typeof receivedAt === 'number' ? receivedAt : undefined;
-          this.lastHandler = this.lastHandler.then(
-            () => handler(text, at),
-            () => handler(text, at)
-          );
+          // Replayed frames were already alerted natively while backgrounded; suppress the JS
+          // notification path for them so reopening doesn't re-fire a burst of sounds/haptics.
+          // lastHandler serializes handling, so exactly one frame runs at a time and the flag
+          // brackets only this frame (live frames have no receivedAt and are untouched).
+          const run = async (): Promise<void> => {
+            const notifications = core.notifications as { replaying?: boolean };
+            const replay = at !== undefined;
+            if (replay) notifications.replaying = true;
+            try {
+              await handler(text, at);
+            } finally {
+              if (replay) {
+                // Hold suppression through one microtask so a notification/sound the handler
+                // scheduled (rather than awaited) is still covered. Safe because lastHandler
+                // serializes handling: the next frame can't run until this run settles, so a live
+                // frame never overlaps the suppressed window.
+                await Promise.resolve();
+                notifications.replaying = false;
+              }
+            }
+          };
+          this.lastHandler = this.lastHandler.then(run, run);
         }
         break;
       case 'close': {

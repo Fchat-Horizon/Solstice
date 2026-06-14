@@ -51,5 +51,5 @@
   // The F-List WebSocket runs natively (NativeSocket.swift) so it survives backgrounding; its
   // presence is also how mobile/chat.ts detects iOS and picks the native transport. Events come
   // back via window.__nativeSocketEvent, defined by mobile/NativeSocketConnection.ts.
-  window.NativeSocket = make('nativeSocket', ['connect', 'send', 'close', 'setIdentity']);
+  window.NativeSocket = make('nativeSocket', ['connect', 'send', 'close', 'setNotifyConfig']);
 })();

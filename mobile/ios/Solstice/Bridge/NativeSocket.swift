@@ -23,11 +23,22 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
     private var closeEmitted = false
     private static let bufferCap = 3000
 
-    // Who to notify for while backgrounded (set from JS on connect). `character` is the logged-in
-    // character; `highlights` are lowercased terms (character name + highlight words) that make a
-    // channel message worth a notification.
-    private var character = ""
-    private var highlights: [String] = []
+    // Background-notify policy pushed from JS (mobile/notifyConfig.ts) on connect and whenever it
+    // changes, so native can reproduce the foreground decision (chat/conversations.ts) while JS is
+    // suspended. All names/terms are lowercased; highlight terms are pre-compiled into a word-boundary
+    // regex matching the foreground `\b(...)\b` match.
+    private struct ChannelCfg {
+        let title: String                     // conversation.name, the room's display title
+        let highlightRegex: NSRegularExpression?
+        let watched: Set<String>              // per-channel + global watched/bookmarked characters
+        let notifyAll: Bool                   // channel set to notify on every message
+    }
+    private var character = ""                // lowercased own character, for self-message exclusion
+    private var ignored: Set<String> = []
+    private var mutedPrivates: Set<String> = []
+    private var globalHighlightRegex: NSRegularExpression?   // fallback for channels not in the map
+    private var globalWatched: Set<String> = []
+    private var channels: [String: ChannelCfg] = [:]
 
     override init() {
         super.init()
@@ -44,14 +55,7 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         guard let call = BridgeCall(message) else { return replyHandler(nil, "bad call") }
         switch call.method {
         case "connect": connect(call.string(0)); replyHandler(nil, nil)
-        case "setIdentity":
-            character = call.string(0)
-            highlights = call.string(1)
-                .lowercased()
-                .split(separator: "\n")
-                .map { String($0) }
-                .filter { !$0.isEmpty }
-            replyHandler(nil, nil)
+        case "setNotifyConfig": applyNotifyConfig(call.string(0)); replyHandler(nil, nil)
         case "send": task?.send(.string(call.string(0))) { _ in }; replyHandler(nil, nil)
         case "close":
             // Explicit close (e.g. logout): tear down and emit a clean close so the JS Connection's
@@ -122,8 +126,10 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         }
     }
 
-    // Fire a local notification for an incoming PM (PRI) or a channel message (MSG) that mentions
-    // the character or a highlight term. F-List frames are "<3-char command> <json>".
+    // Fire a local notification for an incoming PM (PRI) or a channel message (MSG) the user would be
+    // notified for in the foreground, using the policy pushed via setNotifyConfig. F-List frames are
+    // "<3-char command> <json>". (Smart filters run async profile lookups in JS and can't be
+    // reproduced here, so they don't suppress background notifications.)
     private func notifyIfNeeded(_ frame: String) {
         guard frame.count > 4 else { return }
         let command = String(frame.prefix(3))
@@ -133,16 +139,73 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return }
         let sender = (obj["character"] as? String) ?? ""
+        let senderLow = sender.lowercased()
+        if ignored.contains(senderLow) { return }
         let message = stripBBCode((obj["message"] as? String) ?? "")
+
         if command == "PRI" {
+            if mutedPrivates.contains(senderLow) { return }
             postNotification(title: sender, body: message, key: sender)
-        } else if sender.lowercased() != character.lowercased() {
-            let low = message.lowercased()
-            if highlights.contains(where: { low.contains($0) }) {
-                let channel = (obj["channel"] as? String) ?? ""
-                postNotification(title: "\(sender) in \(channel)", body: message, key: channel)
+            return
+        }
+
+        // MSG: never notify for our own messages.
+        if senderLow == character { return }
+        let rawChannel = (obj["channel"] as? String) ?? ""
+        let cfg = channels[rawChannel.lowercased()]
+        let watched = cfg?.watched ?? globalWatched
+        let regex = cfg?.highlightRegex ?? globalHighlightRegex
+        let shouldNotify = (cfg?.notifyAll ?? false)
+            || watched.contains(senderLow)
+            || matches(message, regex)
+        guard shouldNotify else { return }
+        let title = cfg?.title ?? rawChannel
+        // byKey resolves channels off channelMap, which is keyed by the raw channel id; "#" + the
+        // frame's channel is exactly the lookup chat/conversations.ts uses, so a tap always routes.
+        postNotification(title: "\(sender) in \(title)", body: message, key: "#\(rawChannel)")
+    }
+
+    // Parse the background-notify config pushed from JS into the matcher state above.
+    private func applyNotifyConfig(_ json: String) {
+        guard let data = json.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return }
+        character = (obj["character"] as? String ?? "").lowercased()
+        ignored = lowerSet(obj["ignored"])
+        mutedPrivates = lowerSet(obj["mutedPrivates"])
+        globalHighlightRegex = highlightRegex(from: obj["globalHighlights"])
+        globalWatched = lowerSet(obj["globalWatched"])
+        var parsed: [String: ChannelCfg] = [:]
+        if let chans = obj["channels"] as? [String: Any] {
+            for (id, raw) in chans {
+                guard let c = raw as? [String: Any] else { continue }
+                parsed[id] = ChannelCfg(
+                    title: c["title"] as? String ?? id,
+                    highlightRegex: highlightRegex(from: c["highlights"]),
+                    watched: lowerSet(c["watched"]),
+                    notifyAll: c["notifyAll"] as? Bool ?? false)
             }
         }
+        channels = parsed
+    }
+
+    private func lowerSet(_ value: Any?) -> Set<String> {
+        return Set((value as? [String])?.map { $0.lowercased() } ?? [])
+    }
+
+    // Compile lowercased terms into a case-insensitive word-boundary regex, matching the foreground
+    // `\b(term1|term2)\b` highlight match (chat/conversations.ts). nil when there are no terms.
+    private func highlightRegex(from value: Any?) -> NSRegularExpression? {
+        let terms = ((value as? [String]) ?? []).filter { !$0.isEmpty }
+        guard !terms.isEmpty else { return nil }
+        let escaped = terms.map { NSRegularExpression.escapedPattern(for: $0) }
+        let pattern = "\\b(\(escaped.joined(separator: "|")))\\b"
+        return try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+    }
+
+    private func matches(_ text: String, _ regex: NSRegularExpression?) -> Bool {
+        guard let regex = regex else { return false }
+        return regex.firstMatch(in: text, options: [], range: NSRange(text.startIndex..., in: text)) != nil
     }
 
     private func postNotification(title: String, body: String, key: String) {
@@ -152,6 +215,9 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         // The current theme's PM/highlight sound (copied to Library/Sounds), or the system default.
         content.sound = SoundThemes.notificationSound(for: "attention")
         content.userInfo = ["data": key]
+        // Group per conversation so a busy (notify-on-every-message) channel collapses into one stack in
+        // Notification Center instead of flooding it with separate banners.
+        content.threadIdentifier = key
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
