@@ -26,7 +26,13 @@ export default class Notifications extends BaseNotifications {
     // Keep the native side's current sound theme in sync (cheap no-op when unchanged). Native
     // resolves themed sounds from the bundled www/sound-themes/<theme>/ and uses the theme's sound
     // for background notifications too. Mirrors chat/notifications.ts getSoundTheme.
+    //
+    // setSoundTheme only exists on the iOS bridge (NativeNotification.swift). The Android Kotlin
+    // bridge (Notifications.kt) has no such method, so calling it there throws and aborts the whole
+    // notify()/playSound() before the notification is ever posted. Guard the call so Android is
+    // unaffected (it plays the default www/sounds/<name>.mp3 regardless of theme).
     private syncSoundTheme(): void {
+        if(typeof (NativeNotification as any).setSoundTheme !== 'function') return; //tslint:disable-line:no-any
         const theme = (core.state as any).generalSettings?.soundTheme //tslint:disable-line:no-any
             || core.state.settings.soundTheme || 'default';
         NativeNotification.setSoundTheme(theme);
