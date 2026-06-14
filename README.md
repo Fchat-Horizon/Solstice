@@ -100,7 +100,11 @@ download URL — it's a prerelease _test_ build, not an official release.
   https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/Solstice.ipa
   ```
 
-- **SideStore source (tap-to-update):** add this as a Source in SideStore, then tap Install/Update:
+- **SideStore source (tap-to-update):** on your iPhone with [SideStore](https://sidestore.io/) installed, tap the button to add the source, then tap Install/Update:
+
+  [![Add to SideStore](https://img.shields.io/badge/Add%20to-SideStore-7B68EE?style=for-the-badge)](https://celloserenity.github.io/altdirect/?url=https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/sidestore-source.json&r=sidestore)
+
+  Or add this URL manually as a Source (GitHub strips the `sidestore://` scheme, so the button routes through the [altdirect](https://github.com/CelloSerenity/altdirect) redirect):
 
   ```
   https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/sidestore-source.json
