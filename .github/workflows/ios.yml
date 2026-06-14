@@ -4,12 +4,14 @@ name: Build iOS (SideStore)
 # web bundle, generates the Xcode project from mobile/ios/project.yml with XcodeGen, runs
 # the NativeLogs unit tests, ad-hoc signs the app, and produces an unsigned-by-SideStore .ipa.
 #
-# The .ipa is published two ways: as a private workflow artifact (collaborators only), and
-# on pushes to development, to a rolling pre-release (tag `ios-latest`) with a STABLE
-# download URL so it can be installed one-tap on-device (tap the link -> Open in LiveContainer,
-# or add the SideStore source). The pre-release is marked prerelease + make_latest:false so it
-# never hijacks the Android "Latest" release. There is intentionally no `tags` trigger, so
-# cutting an Android release does not publish an iOS IPA.
+# The .ipa is published three ways: as a private workflow artifact (collaborators only); on pushes
+# to development, to a rolling pre-release (tag `ios-latest`) with a STABLE download URL so it can be
+# installed one-tap on-device (tap the link -> Open in LiveContainer, or add the SideStore source);
+# and on a `v*` release tag, attached to that version's GitHub release alongside the Android APKs, so
+# anyone who wants to sideload a release build can. The rolling pre-release is marked
+# prerelease + make_latest:false so it never hijacks the Android "Latest" release. The release-tag
+# attachment only uploads the asset (gh release upload) and never touches the release's draft state,
+# so the Android release pipeline (build.yml) is unaffected.
 
 permissions:
   contents: write
@@ -17,6 +19,7 @@ permissions:
 on:
   push:
     branches: [development]
+    tags: ['v[0-9]*']
   pull_request:
     paths:
       - 'mobile/**'
@@ -176,3 +179,28 @@ jobs:
             mobile/ios/sidestore-source.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # On a release tag, attach the IPA to that version's GitHub release (created by build.yml with
+      # the Android APKs). Uses `gh release upload`, which only adds an asset and never changes the
+      # release's draft/prerelease state, so the Android release pipeline is untouched. Best-effort:
+      # the Android job finishes long before this ~15-min iOS build, but we still wait briefly for the
+      # release to exist, and if it never appears we leave the IPA as a workflow artifact rather than
+      # failing the build.
+      - name: Attach IPA to the tagged release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        working-directory: mobile/ios
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          IPA="Solstice-${{ steps.version.outputs.version }}.ipa"
+          for i in $(seq 1 10); do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" "$IPA" --clobber
+              echo "Attached $IPA to release $TAG"
+              exit 0
+            fi
+            echo "Release $TAG not ready yet ($i/10); waiting 30s..."
+            sleep 30
+          done
+          echo "::warning::Release $TAG not found after waiting; IPA left as a workflow artifact only."
