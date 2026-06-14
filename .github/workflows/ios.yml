@@ -1,0 +1,178 @@
+name: Build iOS (SideStore)
+
+# iOS can only be compiled on macOS, so this runs on a macOS runner. It builds the shared
+# web bundle, generates the Xcode project from mobile/ios/project.yml with XcodeGen, runs
+# the NativeLogs unit tests, ad-hoc signs the app, and produces an unsigned-by-SideStore .ipa.
+#
+# The .ipa is published two ways: as a private workflow artifact (collaborators only), and
+# on pushes to development, to a rolling pre-release (tag `ios-latest`) with a STABLE
+# download URL so it can be installed one-tap on-device (tap the link -> Open in LiveContainer,
+# or add the SideStore source). The pre-release is marked prerelease + make_latest:false so it
+# never hijacks the Android "Latest" release. There is intentionally no `tags` trigger, so
+# cutting an Android release does not publish an iOS IPA.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [development]
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - 'chat/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    name: Build unsigned IPA
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      # Emits mobile/www, which mobile/ios/project.yml references as a folder reference.
+      # Must run BEFORE xcodegen so the folder exists when the project is generated.
+      - name: Build web assets
+        run: pnpm --filter solstice-mobile build:dist
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Read app version
+        id: version
+        run: |
+          version="$(node -p "require('./mobile/package.json').version")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          # Use a monotonic build number from the run number.
+          echo "build=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          # Unique, incrementing version per build (package version + run number). The bare package
+          # version is constant across rolling builds, so SideStore never saw a change and offered
+          # no update; stamping the run number makes each build newer than the last installed one.
+          echo "display=${version}.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Xcode project
+        working-directory: mobile/ios
+        run: xcodegen generate
+
+      - name: Run unit tests (NativeLogs format parity)
+        working-directory: mobile/ios
+        run: |
+          # Pick an available simulator by UDID rather than a hard-coded name, since the
+          # runner's installed simulators change between Xcode images. Extract the UUID token
+          # (device names like "iPhone SE (3rd generation)" contain parens, so match the UUID).
+          uuid='[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}'
+          UDID=$(xcrun simctl list devices available | grep iPhone | grep -oE "$uuid" | head -1)
+          if [ -z "$UDID" ]; then
+            UDID=$(xcrun simctl list devices available | grep -oE "$uuid" | head -1)
+          fi
+          echo "Using simulator $UDID"
+          xcodebuild test \
+            -project Solstice.xcodeproj \
+            -scheme Solstice \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=$UDID" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build unsigned device app
+        working-directory: mobile/ios
+        run: |
+          xcodebuild \
+            -project Solstice.xcodeproj \
+            -scheme Solstice \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            MARKETING_VERSION="${{ steps.version.outputs.display }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            clean build
+
+      - name: Package IPA (ad-hoc signed)
+        working-directory: mobile/ios
+        run: |
+          APP="build/Build/Products/Release-iphoneos/Solstice.app"
+          test -d "$APP" || { echo "Build product not found at $APP"; exit 1; }
+          # Ad-hoc sign so the app has a valid code-signature structure for SideStore/AltStore
+          # to replace on-device. A fully-unsigned Mach-O (no LC_CODE_SIGNATURE) can crash the
+          # re-signer during install. Ad-hoc (-) needs no certificate/keychain, and the app has
+          # no embedded frameworks, so signing the bundle is sufficient.
+          codesign --force --sign - --timestamp=none "$APP"
+          codesign --verify --verbose "$APP"
+          rm -rf Payload Solstice-*.ipa
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          IPA="Solstice-${{ steps.version.outputs.version }}.ipa"
+          zip -qry "$IPA" Payload
+          echo "Built $IPA ($(du -h "$IPA" | cut -f1))"
+
+      # Private distribution: the IPA is published only as a workflow artifact (collaborators
+      # only), never attached to a public release. Download it with
+      #   gh run download <run-id> -n Solstice-ios-unsigned
+      # and import the .ipa into a standalone SideStore (My Apps -> +).
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Solstice-ios-unsigned
+          path: mobile/ios/Solstice-*.ipa
+          if-no-files-found: error
+
+      # One-tap on-device install: stable-named .ipa + a SideStore source pointing at it.
+      # Only on direct pushes to development (never PRs).
+      - name: Prepare rolling-release assets
+        if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+        working-directory: mobile/ios
+        run: |
+          cp "Solstice-${{ steps.version.outputs.version }}.ipa" Solstice.ipa
+          URL="${{ github.server_url }}/${{ github.repository }}/releases/download/ios-latest/Solstice.ipa"
+          node - "${{ steps.version.outputs.display }}" "$(date -u +%Y-%m-%d)" "$(stat -f%z Solstice.ipa)" "$URL" <<'NODE'
+          const fs = require('fs');
+          const [version, date, size, url] = process.argv.slice(2);
+          const src = JSON.parse(fs.readFileSync('sidestore-source.json', 'utf8'));
+          const app = src.apps[0];
+          Object.assign(app, { version, versionDate: date, size: Number(size), downloadURL: url });
+          app.minOSVersion = '14.0.0';
+          app.versions = [{ version, date, localizedDescription: 'Rolling iOS test build.',
+                            downloadURL: url, size: Number(size), minOSVersion: '14.0.0' }];
+          fs.writeFileSync('sidestore-source.json', JSON.stringify(src, null, 2));
+          NODE
+
+      - name: Publish rolling pre-release (ios-latest)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-latest
+          prerelease: true
+          make_latest: 'false'
+          name: iOS test build (latest)
+          body: |
+            Rolling, ad-hoc-signed iOS **test** build of the latest `development` commit,
+            not an official release. SideStore/LiveContainer re-signs it on-device.
+
+            **Install (one-tap):** open `Solstice.ipa` below on your iPhone and choose
+            **Open in LiveContainer** (or your sideloader). Or add `sidestore-source.json`
+            as a SideStore source for tap-to-update.
+          files: |
+            mobile/ios/Solstice.ipa
+            mobile/ios/sidestore-source.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

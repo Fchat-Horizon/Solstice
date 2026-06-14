@@ -635,14 +635,30 @@
       text-align: center;
       position: relative;
 
-      &:not(:disabled):hover {
-        border: none;
-        transform: translateY(-4px);
-        &:not(.selected) {
-          box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
-        }
+      // Hover lift + pin reveal only on devices with a real (mouse) pointer. On a touchscreen,
+      // a :hover rule that reveals content makes iOS WebKit treat the first tap as "hover" and
+      // only the second tap as the click — which made selecting a character need a double tap.
+      // Gating it behind (hover: hover) keeps the desktop effect while letting a single tap
+      // select on mobile (Android and iOS).
+      @media (hover: hover) {
+        &:not(:disabled):hover {
+          border: none;
+          transform: translateY(-4px);
+          &:not(.selected) {
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+          }
 
-        .char-icon.pin-icon {
+          .char-icon.pin-icon {
+            opacity: 1;
+            pointer-events: auto;
+          }
+        }
+      }
+
+      // Touch devices have no hover to reveal the pin, so surface it on the selected tile
+      // (pinned tiles already keep their pin visible via `.pinned`).
+      @media (hover: none) {
+        &.selected .char-icon.pin-icon {
           opacity: 1;
           pointer-events: auto;
         }

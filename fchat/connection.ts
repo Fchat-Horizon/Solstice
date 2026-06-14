@@ -107,9 +107,11 @@ export default class Connection implements Interfaces.Connection {
         method: 'ticket',
         ticket: this.ticket
       });
+      if (this.socket !== undefined && this.socket.nativeKeepalive === true)
+        return;
       this.resetPinTimeout();
     });
-    this.socket.onMessage(async (msg: string) => {
+    this.socket.onMessage(async (msg: string, receivedAt?: number) => {
       const type = <keyof Interfaces.ServerCommands>msg.substr(0, 3);
       const data =
         msg.length > 6 ? <object>JSON.parse(msg.substr(4)) : undefined;
@@ -119,7 +121,7 @@ export default class Connection implements Interfaces.Connection {
         data
       });
 
-      return this.handleMessage(type, data);
+      return this.handleMessage(type, data, receivedAt);
     });
     this.socket.onClose(async (event: CloseEvent) => {
       log.debug('socket.onclose', {
@@ -320,9 +322,12 @@ export default class Connection implements Interfaces.Connection {
   //tslint:disable:no-unsafe-any no-any
   protected async handleMessage<T extends keyof Interfaces.ServerCommands>(
     type: T,
-    data: any
+    data: any,
+    receivedAt?: number
   ): Promise<void> {
-    const time = new Date();
+    // `receivedAt` (ms) is set for frames the iOS native socket buffered while backgrounded and
+    // replayed on resume, so they keep their real arrival time instead of being stamped "now".
+    const time = receivedAt !== undefined ? new Date(receivedAt) : new Date();
     const handlers = <Interfaces.CommandHandler<T>[] | undefined>(
       this.messageHandlers[type]
     );
@@ -333,8 +338,13 @@ export default class Connection implements Interfaces.Connection {
         this.vars[<keyof Interfaces.Vars>data.variable] = data.value;
         break;
       case 'PIN':
-        this.send('PIN');
-        this.resetPinTimeout();
+        // The iOS native socket answers PIN itself (so the connection survives while the WebView
+        // is suspended); when it does, skip the JS reply/timeout to avoid a double-PIN and a stale
+        // 90s timeout that would close the still-alive native connection on resume.
+        if (this.socket === undefined || this.socket.nativeKeepalive !== true) {
+          this.send('PIN');
+          this.resetPinTimeout();
+        }
         break;
       case 'ERR':
         if (fatalErrors.indexOf(data.number) !== -1) {

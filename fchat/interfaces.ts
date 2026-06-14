@@ -417,10 +417,17 @@ export namespace WebSocketConnection {
 
 export interface WebSocketConnection {
   close(): void;
-  onMessage(handler: (message: string) => Promise<void>): void;
+  onMessage(
+    handler: (message: string, receivedAt?: number) => Promise<void>
+  ): void;
   onOpen(handler: () => void): void;
   onClose(handler: (e: CloseEvent) => void): void;
   onError(handler: (error: Error) => void): void;
   send(message: string): void;
   readyState: WebSocketConnection.ReadyState;
+  // When true, the transport answers F-List's PIN keepalive itself (e.g. the iOS native socket,
+  // so the connection survives while the WebView is suspended). The JS Connection then skips its
+  // own PIN reply and the 90s pin-timeout, which would otherwise double-PIN and wrongly close the
+  // still-alive native connection on resume.
+  nativeKeepalive?: boolean;
 }

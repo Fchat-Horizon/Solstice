@@ -39,17 +39,22 @@
  */
 import Axios from 'axios';
 import {ipcMain} from 'electron';
-import {init as initCore} from '../chat/core';
+import core, {init as initCore} from '../chat/core';
 import {AdCoordinatorHost} from '../chat/ads/ad-coordinator-host';
 import Socket from '../chat/WebSocket';
+import NativeSocketConnection from './NativeSocketConnection';
 import Connection from '../fchat/connection';
 import {appVersion, GeneralSettings, Logs, SettingsStore} from './filesystem';
 import Index from './Index.vue';
 import Notifications from './notifications';
+import {sendNotifyConfig} from './notifyConfig';
 
 const version = (<{version: string}>require('./package.json')).version; //tslint:disable-line:no-require-imports
 (<any>window)['setupPlatform'] = (platform: string) => { //tslint:disable-line:no-any
     Axios.defaults.params = { __fchat: `mobile-${platform}/${version}` };
+    // Record which native host we're running under ('android' | 'ios') so platform-specific
+    // paths (e.g. the iOS import picker in AppExporterDialog) can branch on it.
+    document.documentElement.dataset.mobileOs = platform;
 };
 document.documentElement.dataset.mobilePlatform = 'true';
 // window.open() is a no-op in the Android WebView — route all calls through location.href
@@ -76,8 +81,44 @@ try {
 (window as any).require = (mod: string) =>
     mod === 'fs' ? require('fs') : mod === 'path' ? require('path') : undefined;
 
-const connection = new Connection('Solstice (Mobile)', appVersion, Socket);
+// Expose the bundled chat theme names so the Settings theme picker has options on mobile (the
+// desktop path lists them from disk via fs, which doesn't exist in the WebView).
+//tslint:disable-next-line:no-require-imports no-any
+const themeContext = (require as any).context('../scss/themes/chat', false, /\.scss$/);
+(window as any).__availableThemes = themeContext.keys() //tslint:disable-line:no-any
+    .map((k: string) => k.replace(/^\.\//, '').replace(/\.scss$/, ''))
+    .sort();
+
+// Same for the sound themes (audiopacks): the Settings sound-theme picker lists these on mobile.
+//tslint:disable-next-line:no-require-imports no-any
+const soundThemeContext = (require as any).context('../chat/sound-themes', true, /sound\.json$/);
+(window as any).__availableSoundThemes = soundThemeContext.keys() //tslint:disable-line:no-any
+    .map((k: string) => k.replace(/^\.\//, '').replace(/\/sound\.json$/, ''))
+    .sort();
+
+// On iOS the WebSocket runs natively (NativeSocket.swift) so it survives backgrounding; bridge.js
+// defines window.NativeSocket there. Android keeps the connection alive via its foreground service,
+// so it uses the in-WebView browser socket. window.NativeSocket is set at document-start, before
+// this runs, so it is a reliable iOS check.
+const SocketProvider = (window as any).NativeSocket !== undefined ? NativeSocketConnection : Socket; //tslint:disable-line:no-any
+const connection = new Connection('Solstice (Mobile)', appVersion, SocketProvider);
 initCore(connection, new GeneralSettings() as any, Logs, SettingsStore, Notifications);
+
+// On iOS the native socket fires notifications for messages that arrive while the app is
+// backgrounded (JS is suspended then). Push the full background-notify config (character, ignore/mute
+// lists, per-channel highlight/watched/notify settings and room titles) so native can reproduce the
+// foreground decision; mobile/Index.vue re-pushes it whenever that state changes. Re-sent on every
+// (re)connect.
+if ((window as any).NativeSocket !== undefined) { //tslint:disable-line:no-any
+    connection.onEvent('connected', () => {
+        sendNotifyConfig();
+        // Prime the native sound theme so background notifications use it even before any sound has
+        // played in the foreground.
+        const soundTheme = (core.state as any).generalSettings?.soundTheme //tslint:disable-line:no-any
+            || core.state.settings.soundTheme || 'default';
+        (window as any).NativeNotification.setSoundTheme(soundTheme); //tslint:disable-line:no-any
+    });
+}
 
 // On desktop the ad coordinator host lives in the Electron main process; on mobile there
 // is no main process, so host it here in the WebView. Without this, the guest's

@@ -75,6 +75,7 @@
     import AppExporterDialog from './AppExporterDialog.vue';
     import UpdateBanner from './UpdateBanner.vue';
     import { EventBus } from '../chat/preview/event-bus';
+    import { notifyConfigJSON, pushNotifyConfig } from './notifyConfig';
 
     declare global {
         interface Window {
@@ -199,6 +200,16 @@
             EventBus.$on('open-mobile-exporter', () => {
                 (<any>this.$refs['appExporterDialog']).show();
             });
+            // iOS: keep the native background-notify config (chat.ts pushes it on connect) current as
+            // channels are joined/left and notification settings change. Watching the serialized config
+            // re-fires only on a real change; debounce coalesces bursts (e.g. joining many channels).
+            if((window as any).NativeSocket !== undefined) { //tslint:disable-line:no-any
+                let timer: number | undefined;
+                this.$watch(() => notifyConfigJSON(), (json: string) => {
+                    if(timer !== undefined) clearTimeout(timer);
+                    timer = window.setTimeout(() => pushNotifyConfig(json), 250);
+                });
+            }
         },
     });
 </script>

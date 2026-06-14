@@ -5,6 +5,7 @@ export default class Socket implements WebSocketConnection {
   static host = 'wss://chat.f-list.net/chat2';
   private socket: WebSocket;
   private lastHandler: Promise<void> = Promise.resolve();
+  private lastCloseInfo = '';
 
   constructor() {
     this.socket = new WebSocket(Socket.host);
@@ -38,15 +39,24 @@ export default class Socket implements WebSocketConnection {
   }
 
   onClose(handler: (e: CloseEvent) => void): void {
-    this.socket.addEventListener('close', handler);
+    this.socket.addEventListener('close', e => {
+      // Remember the close code/reason so onError can report the real cause (the WebSocket
+      // 'error' event itself carries no detail). Helps diagnose disconnects without a JS console.
+      this.lastCloseInfo = `code ${e.code}${e.reason ? ` (${e.reason})` : ''}${
+        e.wasClean ? '' : ', abnormal'
+      }`;
+      handler(e);
+    });
   }
 
   onError(handler: (error: Error) => void): void {
-    //The Socket class itself does not pass its error message back when instantiating it fails and only prints it in the console
-    //So unfortunately you get this hardcoded nonsense
+    // The 'error' event exposes no detail, so surface the most recent close code/reason.
     this.socket.addEventListener('error', () =>
       handler(
-        new Error('Unable to create Websocket handler for ' + Socket.host)
+        new Error(
+          `WebSocket error for ${Socket.host}` +
+            (this.lastCloseInfo ? ` — last close: ${this.lastCloseInfo}` : '')
+        )
       )
     );
   }

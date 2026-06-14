@@ -7,6 +7,10 @@
   - [Android](#android)
     - [Prerequisites](#prerequisites)
     - [Building](#building)
+  - [iOS (SideStore)](#ios-sidestore)
+    - [Installing via SideStore](#installing-via-sidestore)
+    - [Building from source (macOS)](#building-from-source-macos)
+    - [iOS limitations](#ios-limitations)
 - [Usage](#usage)
   - [Getting started](#getting-started)
 - [Development](#development)
@@ -24,7 +28,7 @@
 
 # Solstice
 
-This repository contains a continuation of the heavily customized F-Chat Rising, a version of the mainline F-Chat 3.0 client, packaged as a native Android application.
+This repository contains a continuation of the heavily customized F-Chat Rising, a version of the mainline F-Chat 3.0 client, packaged as a native Android application (with an experimental iOS build installable via SideStore).
 
 ## Features
 
@@ -75,6 +79,87 @@ Solstice is available as a native Android application that wraps the web app in 
    For a release build, use `./gradlew assembleRelease` — you will need to configure signing in `app/build.gradle`.
 
    Alternatively, open `mobile/android/` in Android Studio and build from there.
+
+## iOS (SideStore)
+
+> [!NOTE]
+> The iOS build is **experimental** and currently distributed as a **private test build** —
+> it wraps the same web app in a `WKWebView` and mirrors the Android native bridges in Swift
+> (`mobile/ios/`). The `.ipa` is ad-hoc signed in CI; [SideStore](https://sidestore.io/)
+> re-signs it on-device with your own Apple ID, so no paid Apple Developer account is required.
+
+### Installing via SideStore
+
+The latest build is published as a **rolling pre-release** (tag `ios-latest`) with a stable
+download URL — it's a prerelease _test_ build, not an official release.
+
+- **One-tap (LiveContainer):** on your iPhone, open the IPA link and choose **Open in
+  LiveContainer** (or your sideloader):
+
+  ```
+  https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/Solstice.ipa
+  ```
+
+- **SideStore source (tap-to-update):** add this as a Source in SideStore, then tap Install/Update:
+
+  ```
+  https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/sidestore-source.json
+  ```
+
+SideStore/LiveContainer re-signs the app on-device with your Apple ID (no paid account needed)
+and refreshes the 7-day signature automatically.
+
+> [!IMPORTANT]
+> The SideStore bundled **inside LiveContainer** crashes in its local-install path — install
+> with a _standalone_ SideStore, or just run the IPA as a LiveContainer guest (Open in
+> LiveContainer). Collaborators can also grab the build privately from CI:
+> `gh run download -R Fchat-Horizon/Solstice -n Solstice-ios-unsigned`.
+
+### Building from source (macOS)
+
+iOS binaries can only be produced on **macOS with Xcode**. CI does this automatically
+(`.github/workflows/ios.yml`, on a macOS runner), but to build locally:
+
+1. Install tooling: Xcode 15+, [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+   (`brew install xcodegen`), Node.js ≥ 24 and pnpm.
+2. Compile the web assets (this **must** run before generating the Xcode project — the
+   project includes `mobile/www` as a folder reference):
+
+   ```bash
+   pnpm install
+   pnpm run build:mobile:dist
+   ```
+
+3. Generate the Xcode project and build an unsigned `.ipa`:
+
+   ```bash
+   cd mobile/ios
+   xcodegen generate
+   xcodebuild -project Solstice.xcodeproj -scheme Solstice -configuration Release \
+     -sdk iphoneos -derivedDataPath build \
+     CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO clean build
+   mkdir -p Payload && cp -R build/Build/Products/Release-iphoneos/Solstice.app Payload/
+   zip -qry Solstice.ipa Payload
+   ```
+
+   Or open `Solstice.xcodeproj` in Xcode after `xcodegen generate` and run on a device/simulator.
+
+### iOS limitations
+
+iOS is more restrictive than Android; on this build:
+
+- **Background connectivity uses a silent-audio keep-alive.** iOS has no equivalent to
+  Android's foreground service, so while connected the app loops an inaudible audio stream
+  (the `audio` background mode) to stay running and keep the WebSocket alive. It mixes with
+  other audio and resumes after interruptions. iOS can still terminate it under memory
+  pressure.
+  - **Under LiveContainer**, the guest's background audio only works if the LiveContainer host
+    honors it. If the app gets killed shortly after backgrounding, enable background audio /
+    "keep alive" for Solstice in LiveContainer's per-app settings, or run it standalone.
+- **No remote/push notifications.** Only local notifications are used (which the app
+  generates itself) — this is also what keeps it installable under SideStore free signing.
+- **SideStore constraints apply.** Free Apple IDs limit you to a few sideloaded apps and a
+  7-day signature that SideStore must refresh periodically.
 
 # Usage
 

@@ -536,9 +536,13 @@ export function init(settings: Settings, characters: SimpleCharacter[]): void {
   Vue.component('bbcode-editor', Editor);
   Utils.init(settings, characters);
   core.connection.onEvent('connecting', () => {
-    Utils.settings.defaultCharacter = characters.find(
-      x => x.name === core.connection.character
-    )!.id;
+    // The connecting character is not always present in `characters` (a reconnect can fire before
+    // the list is refreshed, or a stale handler from an earlier session can run). A missing match
+    // must not throw: if it escapes this handler, connect() turns it into a 'closed' event, which
+    // triggers another reconnect, which fires 'connecting' again, looping forever. That loop is
+    // what surfaces as constant "websocket errors" that drop the user back to character select.
+    const own = characters.find(x => x.name === core.connection.character);
+    if (own !== undefined) Utils.settings.defaultCharacter = own.id;
   });
   registerMethod('characterData', characterData);
   registerMethod('contactMethodIconUrl', contactMethodIconUrl);

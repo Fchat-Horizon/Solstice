@@ -8,6 +8,13 @@ node_modules/
 
 /electron/adblocker.bin
 
+# iOS: the Xcode project is generated from project.yml by XcodeGen; build outputs are local
+/mobile/ios/*.xcodeproj
+/mobile/ios/build
+/mobile/ios/DerivedData
+/mobile/ios/Payload
+/mobile/ios/*.ipa
+
 .idea/
 .claude/
 
