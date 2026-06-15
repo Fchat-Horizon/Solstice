@@ -84,7 +84,7 @@
 
         <div class="carousel slide w-100 results">
           <draggable
-            v-if="search === 'category:favorites'"
+            v-if="search === 'category:favorites' && !isMobile"
             v-model="allResults"
             class="carousel-inner w-100 hidden-scrollbar"
             role="listbox"
@@ -229,6 +229,13 @@
         searchUpdateDebounce: (() => {}) as () => void,
         handleScroll: (() => {}) as () => void
       };
+    },
+    computed: {
+      // On mobile, vuedraggable/Sortable.js intercepts taps (eicons don't insert, drags hang) and the
+      // unpaginated favourites render freezes the WebView, so mobile uses the plain paginated grid.
+      isMobile(): boolean {
+        return document.documentElement.dataset.mobilePlatform === 'true';
+      }
     },
     created(): void {
       this.searchUpdateDebounce = debounce(() => {
