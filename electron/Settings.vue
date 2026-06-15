@@ -222,6 +222,10 @@
                   <h5>
                     {{ l('settings.updates') }}
                   </h5>
+                  <div class="mb-2 form-text text-muted">
+                    Solstice {{ solsticeVersion }} (built on Horizon
+                    {{ horizonVersion }})
+                  </div>
                   <div class="mb-3">
                     <div class="form-check">
                       <input
@@ -1151,6 +1155,7 @@
     updateSupportedLanguages
   } from './language';
   import _ from 'lodash';
+  import { SOLSTICE_VERSION, HORIZON_BASE_VERSION } from '../chat/version';
 
   const browserWindow = remote.getCurrentWindow();
 
@@ -1164,6 +1169,8 @@
         selectedTab: '0',
         isMaximized: false,
         l: l,
+        solsticeVersion: SOLSTICE_VERSION,
+        horizonVersion: HORIZON_BASE_VERSION,
         platform: process.platform,
         hasCompletedUpgrades: false,
         browserPath: '',
