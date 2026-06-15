@@ -610,6 +610,11 @@
       Sortable.create(<HTMLElement>this.$refs['privateConversations'], {
         animation: 50,
         fallbackTolerance: 5,
+        // Touch only: require a brief hold before a drag can start, so a jittery tap opens the
+        // conversation instead of dragging it. delayOnTouchOnly leaves desktop (mouse) drag immediate,
+        // and 150ms < the 500ms long-press menu so the two don't collide.
+        delay: 150,
+        delayOnTouchOnly: true,
         onEnd: async e => {
           if (e.oldIndex === e.newIndex) return;
           return core.conversations.privateConversations[e.oldIndex!].sort(
@@ -642,6 +647,11 @@
         sort: true,
         animation: 150,
         fallbackTolerance: 5,
+        // Touch only: require a brief hold before a drag can start, so a jittery tap opens the channel
+        // instead of dragging it. delayOnTouchOnly keeps desktop drag immediate; 150ms < the 500ms
+        // long-press menu so they don't collide.
+        delay: 150,
+        delayOnTouchOnly: true,
         onStart: () => startChannelDragging(),
         onMove: (e: any) => setActiveDropZone(e.to as HTMLElement | undefined),
         onEnd: async (e: any) => {

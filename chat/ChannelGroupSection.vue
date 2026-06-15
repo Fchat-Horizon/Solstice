@@ -192,6 +192,11 @@
         group: { name: 'channels', pull: true, put: true },
         animation: 50,
         fallbackTolerance: 5,
+        // Touch only: require a brief hold before a drag can start, so a jittery tap opens the channel
+        // instead of dragging it. delayOnTouchOnly keeps desktop drag immediate; 150ms < the 500ms
+        // long-press menu so they don't collide.
+        delay: 150,
+        delayOnTouchOnly: true,
         onStart: () => startChannelDragging(),
         onMove: (e: any) => setActiveDropZone(e.to as HTMLElement | undefined),
         onAdd: (e: Sortable.SortableEvent) => {
