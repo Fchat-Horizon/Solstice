@@ -2,6 +2,7 @@ import UIKit
 import WebKit
 import UserNotifications
 import UniformTypeIdentifiers
+import SafariServices
 
 // The iOS analogue of Android's MainActivity: hosts the WKWebView, wires up the native
 // bridges, intercepts profile links, drives the keyboard inset, bridges JS dialogs, and
@@ -160,14 +161,31 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
 
         if url.scheme == "profile", let authority = url.host,
            let ext = URL(string: "https://www.f-list.net/c/\(authority)") {
-            UIApplication.shared.open(ext)
+            openInAppBrowser(ext)
             return decisionHandler(.cancel)
         }
         if url.scheme == "http" || url.scheme == "https" {
-            UIApplication.shared.open(url)
+            openInAppBrowser(url)
             return decisionHandler(.cancel)
         }
         decisionHandler(.cancel)
+    }
+
+    // Open web links in an in-app Safari sheet (SFSafariViewController) instead of ejecting the
+    // user out to the full Safari app, which is jarring and tears them away from the conversation.
+    // The sheet overlays the chat and swipes/Done away back to it. SFSafariViewController only
+    // accepts http/https; anything else (mailto:, tel:, custom app schemes) falls back to the
+    // system handler. Present from whatever is currently on top so it never collides with an
+    // already-presented sheet (e.g. the document picker).
+    private func openInAppBrowser(_ url: URL) {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            UIApplication.shared.open(url)
+            return
+        }
+        let safari = SFSafariViewController(url: url)
+        var top: UIViewController = self
+        while let presented = top.presentedViewController { top = presented }
+        top.present(safari, animated: true)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
