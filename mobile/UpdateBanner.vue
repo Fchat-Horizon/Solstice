@@ -24,7 +24,7 @@
     'https://api.github.com/repos/Fchat-Horizon/Solstice/releases?per_page=15';
 
   // Minimal semver-ish "is `latest` newer than `current`?", supporting X.Y.Z and
-  // X.Y.Z-pre.N (e.g. 2.2.0-beta.3). A stable release outranks a prerelease of the
+  // X.Y.Z-pre.N (e.g. 2026.6.0-beta.3). A stable release outranks a prerelease of the
   // same core version. Avoids pulling in a semver dependency.
   function isNewer(latest: string, current: string): boolean {
     const parse = (v: string) => {

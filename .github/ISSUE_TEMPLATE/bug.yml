@@ -14,7 +14,7 @@ body:
     id: version-info
     attributes:
       label: Version Information
-      placeholder: Please provide your Solstice version (e.g. 2.2.0-beta.3) and your Android version.
+      placeholder: Please provide your Solstice version (e.g. 2026.6.0) and your Android or iOS version.
     validations:
       required: true
   - type: textarea

@@ -25,7 +25,7 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "2.2.0"
+    MARKETING_VERSION: "2026.6.0"
     CURRENT_PROJECT_VERSION: "1"
     # Unsigned by default — SideStore re-signs on-device with the user's own
     # free/paid Apple ID, so we never ship a signed binary.

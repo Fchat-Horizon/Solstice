@@ -106,8 +106,8 @@ Solstice for iOS is publicly available through two channels:
   https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/sidestore-source.json
   ```
 
-  The source tracks a **rolling pre-release** (tag `ios-latest`) rebuilt from the latest
-  `development` commit, so it always has the newest changes.
+  The source tracks a **rolling pre-release** (tag `ios-latest`) rebuilt on each tagged
+  release, so it always points at the latest released build.
 
 - **Release IPA** if you prefer a tagged build: every
   [release](https://github.com/Fchat-Horizon/Solstice/releases) attaches a `Solstice-<version>.ipa`

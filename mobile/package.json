@@ -3,7 +3,7 @@
   "version": "2026.6.0",
   "displayName": "Solstice",
   "author": "The F-List Team and Solstice Contributors",
-  "description": "F-List.net Chat Client - Android",
+  "description": "F-List.net Chat Client - Android and iOS",
   "main": "main.js",
   "license": "MPL-2.0",
   "scripts": {
