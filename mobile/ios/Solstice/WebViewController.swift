@@ -171,18 +171,23 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         decisionHandler(.cancel)
     }
 
-    // Open web links in an in-app Safari sheet (SFSafariViewController) instead of ejecting the
-    // user out to the full Safari app, which is jarring and tears them away from the conversation.
-    // The sheet overlays the chat and swipes/Done away back to it. SFSafariViewController only
-    // accepts http/https; anything else (mailto:, tel:, custom app schemes) falls back to the
-    // system handler. Present from whatever is currently on top so it never collides with an
-    // already-presented sheet (e.g. the document picker).
+    // Tapping a link pops it up as a half-height card sheet that floats over the chat, which stays
+    // visible behind it, instead of a full-screen takeover or the external Safari app. Flick the card
+    // down (or use the grabber) to dismiss back to the conversation. Starts at the medium detent and
+    // can be dragged up to full. SFSafariViewController only accepts http/https; anything else
+    // (mailto:, tel:, custom app schemes) falls back to the system handler. Present from whatever is
+    // currently on top so it never collides with an already-presented sheet (e.g. the document picker).
     private func openInAppBrowser(_ url: URL) {
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
             UIApplication.shared.open(url)
             return
         }
         let safari = SFSafariViewController(url: url)
+        safari.modalPresentationStyle = .pageSheet
+        if let sheet = safari.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.prefersGrabberVisible = true
+        }
         var top: UIViewController = self
         while let presented = top.presentedViewController { top = presented }
         top.present(safari, animated: true)
