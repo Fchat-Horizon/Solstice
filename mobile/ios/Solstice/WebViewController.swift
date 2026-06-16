@@ -2,7 +2,6 @@ import UIKit
 import WebKit
 import UserNotifications
 import UniformTypeIdentifiers
-import SafariServices
 
 // The iOS analogue of Android's MainActivity: hosts the WKWebView, wires up the native
 // bridges, intercepts profile links, drives the keyboard inset, bridges JS dialogs, and
@@ -161,36 +160,14 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
 
         if url.scheme == "profile", let authority = url.host,
            let ext = URL(string: "https://www.f-list.net/c/\(authority)") {
-            openInAppBrowser(ext)
+            UIApplication.shared.open(ext)
             return decisionHandler(.cancel)
         }
         if url.scheme == "http" || url.scheme == "https" {
-            openInAppBrowser(url)
+            UIApplication.shared.open(url)
             return decisionHandler(.cancel)
         }
         decisionHandler(.cancel)
-    }
-
-    // Tapping a link pops it up as a half-height card sheet that floats over the chat, which stays
-    // visible behind it, instead of a full-screen takeover or the external Safari app. Flick the card
-    // down (or use the grabber) to dismiss back to the conversation. Starts at the medium detent and
-    // can be dragged up to full. SFSafariViewController only accepts http/https; anything else
-    // (mailto:, tel:, custom app schemes) falls back to the system handler. Present from whatever is
-    // currently on top so it never collides with an already-presented sheet (e.g. the document picker).
-    private func openInAppBrowser(_ url: URL) {
-        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
-            UIApplication.shared.open(url)
-            return
-        }
-        let safari = SFSafariViewController(url: url)
-        safari.modalPresentationStyle = .pageSheet
-        if let sheet = safari.sheetPresentationController {
-            sheet.detents = [.medium(), .large()]
-            sheet.prefersGrabberVisible = true
-        }
-        var top: UIViewController = self
-        while let presented = top.presentedViewController { top = presented }
-        top.present(safari, animated: true)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
