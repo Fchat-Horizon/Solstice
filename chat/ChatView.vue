@@ -629,6 +629,11 @@
         fallbackTolerance: 5,
         swapThreshold: 0.65,
         invertSwap: true,
+        // Touch only: require a brief hold before a drag can start, so a jittery tap on the group
+        // header collapses/expands it instead of dragging. delayOnTouchOnly keeps desktop drag
+        // immediate; 150ms < the 500ms long-press menu so they don't collide.
+        delay: 150,
+        delayOnTouchOnly: true,
         onStart: () => startGroupDragging(),
         onEnd: (e: Sortable.SortableEvent) => {
           endGroupDragging();
