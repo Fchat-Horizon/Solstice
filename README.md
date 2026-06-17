@@ -5,8 +5,10 @@
   - [Features](#features)
 - [Installing](#installing)
   - [Android](#android)
-    - [Prerequisites](#prerequisites)
-    - [Building](#building)
+    - [Installing the APK](#installing-the-apk)
+    - [Building from source](#building-from-source)
+      - [Prerequisites](#prerequisites)
+      - [Building](#building)
   - [iOS (SideStore)](#ios-sidestore)
     - [Installing via SideStore](#installing-via-sidestore)
     - [Building from source (macOS)](#building-from-source-macos)
@@ -46,14 +48,27 @@ In a non-exhaustive list, Solstice has these features!
 
 Solstice is available as a native Android application that wraps the web app in a WebView.
 
-### Prerequisites
+### Installing the APK
+
+The easiest way to install Solstice is to grab a prebuilt APK from the
+[latest release](https://github.com/Fchat-Horizon/Solstice/releases/latest) (this link always
+resolves to the newest stable build): download the `solstice-<version>-solstice.apk` asset and open
+it on your phone to install (you may need to allow installing from unknown sources first). Dev and
+test builds are published as
+[pre-releases](https://github.com/Fchat-Horizon/Solstice/releases).
+
+### Building from source
+
+Only needed if you want to build Solstice yourself; most people should just use the APK above.
+
+#### Prerequisites
 
 - [Node.js](https://nodejs.org/) >= 24 and [pnpm](https://pnpm.io/)
 - JDK 17+ (e.g. `sudo pacman -S jdk17-openjdk` / `sudo apt install openjdk-17-jdk`)
 - [Android SDK](https://developer.android.com/studio) with API 35 platform installed  
   (Android Studio is the easiest way to get this)
 
-### Building
+#### Building
 
 1. Install dependencies:
 
