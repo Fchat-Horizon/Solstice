@@ -132,6 +132,28 @@ class File(private val ctx: Context) {
 		}
 	}
 
+	// Copies the sanitized diagnostic log ('!crashlog', written by mobile/chat.ts) into the public
+	// Downloads folder so it can be attached to a bug report. Returns the saved file name, or "" when
+	// there is no log yet or the copy failed. Mirrors NativeFile.swift's exportCrashLog (share sheet).
+	@JavascriptInterface
+	fun exportCrashLog(): String {
+		return try {
+			val src = File(ctx.filesDir, "!crashlog")
+			if (!src.exists() || src.length() == 0L) return ""
+			val date = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
+			val fileName = "solstice-crashlog-$date.txt"
+			val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+			val outFile = File(dir, fileName)
+			FileInputStream(src).use { input -> FileOutputStream(outFile).use { input.copyTo(it) } }
+			@Suppress("DEPRECATION")
+			(ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager)
+				.addCompletedDownload(fileName, fileName, false, "text/plain", outFile.absolutePath, outFile.length(), true)
+			fileName
+		} catch (e: Exception) {
+			""
+		}
+	}
+
 	private fun zipCharacterDir(charDir: File, out: ZipOutputStream) {
 		val charPrefix = "characters/${charDir.name}"
 		charDir.listFiles()?.forEach { file ->

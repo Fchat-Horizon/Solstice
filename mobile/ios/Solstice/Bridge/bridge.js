@@ -30,7 +30,7 @@
   window.NativeFile = make('nativeFile', [
     'read', 'getSize', 'readBytes', 'delete', 'write', 'writeBytes',
     'listDirectories', 'listFiles', 'ensureDirectory',
-    'exportData', 'pickImportFile'
+    'exportData', 'exportCrashLog', 'pickImportFile'
   ]);
 
   window.NativeLogs = make('nativeLogs', [

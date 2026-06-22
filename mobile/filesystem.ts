@@ -17,6 +17,11 @@ declare global {
         delete(name: string): Promise<boolean>
         ensureDirectory(name: string): Promise<void>
         exportData(): string
+        // Saves the sanitized diagnostic log ('!crashlog') off-device: Android copies it to the
+        // Downloads folder, iOS presents a share sheet. Returns the saved file name, or '' when there
+        // is no log yet or the save failed. (Android resolves synchronously, iOS returns a Promise;
+        // await covers both, matching exportData.)
+        exportCrashLog(): string
     };
     type NativeMessage = {time: number, type: number, sender: string, text: string};
     const NativeLogs: {

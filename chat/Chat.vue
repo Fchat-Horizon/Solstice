@@ -60,6 +60,16 @@
             <span class="btn-text">{{ l('settings.export.title') }}</span>
           </a>
           <a
+            v-if="isMobilePlatform"
+            href="#"
+            @click.prevent="saveCrashLog()"
+            class="btn"
+            title="Save a diagnostic log of any recent errors (no chat content) to share in a bug report"
+          >
+            <span class="fa fa-bug"></span>
+            <span class="btn-text">Save error log</span>
+          </a>
+          <a
             href="https://chat.f-list.net/stats/"
             target="_blank"
             rel="noopener"
@@ -587,6 +597,34 @@
 
       exportData(): void {
         EventBus.$emit('open-mobile-exporter', {});
+      },
+
+      // Mobile only: hand the sanitized '!crashlog' (error type + code-location stack frames, no chat
+      // content) to the OS so it can be attached to a bug report. Android saves it to Downloads; iOS
+      // shows a share sheet. Guarded so it is inert if the native bridge/method is absent.
+      async saveCrashLog(): Promise<void> {
+        const native = (window as any).NativeFile; //tslint:disable-line:no-any
+        if (
+          native === undefined ||
+          typeof native.exportCrashLog !== 'function'
+        ) {
+          alert('Saving the diagnostic log is not available in this build.');
+          return;
+        }
+        try {
+          const fileName: string = await native.exportCrashLog();
+          if (!fileName) {
+            alert(
+              'No diagnostic log to save yet (no errors have been recorded).'
+            );
+            return;
+          }
+          // iOS shows a share sheet (its own confirmation); only Android needs a saved-to message.
+          if (document.documentElement.dataset.mobileOs !== 'ios')
+            alert(`Saved diagnostic log to your Downloads folder: ${fileName}`);
+        } catch {
+          alert('Could not save the diagnostic log.');
+        }
       },
 
       async connect(): Promise<void> {

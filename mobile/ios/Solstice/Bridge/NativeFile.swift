@@ -55,6 +55,8 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
             replyHandler(nil, nil)
         case "exportData":
             replyHandler(exportData(), nil)
+        case "exportCrashLog":
+            replyHandler(exportCrashLog(), nil)
         case "pickImportFile":
             host?.presentImportPicker()
             replyHandler(nil, nil)
@@ -113,6 +115,28 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
         try? FileManager.default.removeItem(at: dest)
         do {
             try ZipArchive.zip(directory: rootURL, to: dest)
+        } catch {
+            return ""
+        }
+        host?.presentShareSheet(fileURL: dest)
+        return fileName
+    }
+
+    // Shares the sanitized diagnostic log ('!crashlog', written by mobile/chat.ts) via a share sheet
+    // so it can be attached to a bug report. Returns the file name, or "" when there is no log yet or
+    // the copy failed. Mirrors File.kt's exportCrashLog (which copies to Downloads on Android).
+    private func exportCrashLog() -> String {
+        let src = url(for: "!crashlog")
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: src.path),
+              let size = attrs[.size] as? NSNumber, size.intValue > 0 else { return "" }
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let fileName = "solstice-crashlog-\(fmt.string(from: Date())).txt"
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        try? FileManager.default.removeItem(at: dest)
+        do {
+            try FileManager.default.copyItem(at: src, to: dest)
         } catch {
             return ""
         }

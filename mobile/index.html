@@ -1,7 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" translate="no">
 <head>
 	<meta charset="UTF-8">
+	<!-- Disable in-WebView page translation. The translation engine rewrites text nodes out from
+	     under Vue, which then throws during patch (removeChild/insertBefore) and permanently wedges
+	     Vue's scheduler, soft-locking the whole UI. See mobile/chat.ts for the defensive DOM guards. -->
+	<meta name="google" content="notranslate">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover" />
 	<title>Solstice</title>
 	<style>html, body { touch-action: manipulation; }</style>
