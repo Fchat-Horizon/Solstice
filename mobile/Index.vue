@@ -222,4 +222,24 @@
     html, .modal {
        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     }
+
+    /*
+     * Issue 10: long-pressing a link, eicon or avatar makes the app unusable until restart.
+     * On touch the WebView starts its native long-press interaction (the text-selection/callout
+     * ActionMode, or a native drag of the link/image). That stuck native gesture swallows
+     * subsequent touches, so tapping anything (e.g. switching tabs) does nothing. This file is
+     * mobile-only, so suppress those long-press affordances on the interactive chat elements. Taps
+     * still navigate; plain message text stays selectable.
+     */
+    .bbcode a,
+    .bbcode img,
+    .user-link,
+    .character-link,
+    .character-avatar,
+    img.eicon {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-user-drag: none;
+    }
 </style>

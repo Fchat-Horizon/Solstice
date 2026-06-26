@@ -74,6 +74,7 @@ document.documentElement.dataset.mobilePlatform = 'true';
 // waiting/flushing state dirty. The window 'error'/'unhandledrejection' listeners below are
 // defense-in-depth for errors raised outside Vue's wrappers.
 function installResilience(): void {
+    installSchedulerGuard();
     installDomGuards();
     installErrorCapture();
 }
@@ -144,6 +145,65 @@ function installErrorCapture(): void {
         logCrash(`vue.errorHandler (${info})`, err);
 }
 
+// THE structural fix for the soft-lock class. The Vue 2 scheduler (vue/.../scheduler.js
+// flushSchedulerQueue) runs every watcher.run() in a bare for-loop with NO try/catch, and only clears
+// its `waiting`/`flushing` flags in resetSchedulerState() AFTER the loop finishes. So if a single
+// watcher.run() throws during patch (a DOM op on a node some other agent moved, a render/destroy edge
+// case, literally anything), the throw escapes the loop, resetSchedulerState() never runs, `waiting`
+// stays true forever, and queueWatcher()'s `if (!waiting)` guard means no future flush is EVER
+// scheduled. From that instant nothing re-renders: handlers still fire and mutate state, but the DOM
+// is frozen until the app is restarted.
+//
+// We have been guarding the individual *sources* of patch throws (the notranslate attribute, the
+// removeChild/insertBefore guards below). That is whack-a-mole: the set of things that can mutate the
+// DOM out from under Vue (translation, IME, autofill, accessibility, password managers, future
+// unknowns) is unbounded, so a new source = a new total freeze. This instead guards the
+// *amplification*: wrap Watcher.prototype.run so a throw is logged and contained to that one watcher.
+// The flush loop then always completes, resetSchedulerState() always runs, and a single bad patch can
+// never wedge the whole app again. The affected component is left until its next successful render
+// instead of freezing everything. This is exactly what Vue 3 does natively; we are backporting it.
+let schedulerGuardReported = false;
+function installSchedulerGuard(): void {
+    try {
+        // Vue 2.7 dropped vm._watchers, but the render watcher is still stored as vm._watcher. Mount a
+        // throwaway off-document instance purely to obtain the Watcher class, then patch its shared
+        // prototype (which every watcher in the app uses).
+        //tslint:disable-next-line:no-any
+        const probe = new Vue({ render: (h: any) => h('div') });
+        probe.$mount();
+        //tslint:disable-next-line:no-any
+        const renderWatcher = (probe as any)._watcher;
+        probe.$destroy();
+        const proto = renderWatcher && (renderWatcher.constructor as { prototype?: { run?: unknown } }).prototype;
+        if (!proto || typeof proto.run !== 'function') {
+            logCrash('scheduler-guard', new Error(
+                'Could not locate Vue Watcher.prototype.run; soft-lock guard NOT installed.'));
+            return;
+        }
+        const originalRun = proto.run as (this: unknown) => void;
+        proto.run = function(this: unknown): void {
+            try {
+                originalRun.call(this);
+            } catch (e) {
+                // Critical: do NOT rethrow. Rethrowing would abort flushSchedulerQueue again and
+                // re-wedge the scheduler, which is the exact bug we are containing.
+                try {
+                    console.error('[scheduler-guard] contained watcher.run error', e); //tslint:disable-line:no-console
+                    if (!schedulerGuardReported) {
+                        schedulerGuardReported = true; // persist only the first hit per session (avoid write storms)
+                        logCrash('watcher.run (contained)', e);
+                    }
+                } catch {
+                    // the guard must never throw
+                }
+            }
+        };
+    } catch (e) {
+        // If anything here fails we simply run without the guard (the DOM guards below still help).
+        logCrash('scheduler-guard install', e);
+    }
+}
+
 // Guard the two DOM mutations Vue performs during patch so a desync (a node that is no longer where
 // Vue's vnode tree expects) logs and no-ops instead of throwing. This is the established Vue 2 +
 // translation workaround; it makes the soft-lock impossible regardless of which agent moved the node.
@@ -186,6 +246,14 @@ function installDomGuards(): void {
 
 // Install the guards + error capture before the app mounts (new Index(...) below).
 if (document.documentElement.dataset.mobilePlatform === 'true') installResilience();
+
+// Issue 10: long-pressing a link/eicon/avatar can start a native HTML5 drag of the element, which on
+// touch leaves the WebView in a stuck gesture state that swallows subsequent taps (the app appears
+// frozen until restart). The CSS in Index.vue sets `-webkit-user-drag: none`, but not every WebView
+// build honors it, so also suppress drag-and-drop outright. Nothing in the mobile UI uses native
+// drag (Sortable reordering uses touch events on mobile), so a blanket dragstart cancel is safe.
+if (document.documentElement.dataset.mobilePlatform === 'true')
+    document.addEventListener('dragstart', (e: Event) => e.preventDefault(), true);
 
 // window.open() is a no-op in the Android WebView — route all calls through location.href
 // so shouldOverrideUrlLoading can intercept and handle them.
