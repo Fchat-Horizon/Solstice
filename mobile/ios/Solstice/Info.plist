@@ -33,6 +33,20 @@
 	<!-- Avoids the export-compliance prompt; the app uses only standard TLS. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Device Sync (NativeSync.swift) makes plain-HTTP requests to Horizon on the local network.
+	     NSAllowsLocalNetworking exempts private/link-local hosts from App Transport Security without
+	     opening up arbitrary internet cleartext; the usage string powers the iOS 14+ local-network
+	     permission prompt shown on the first LAN connection. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Solstice connects to Horizon on your local network to sync chat logs between your devices.</string>
+	<!-- Device Sync scans the QR code Horizon shows. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Solstice uses the camera to scan the Device Sync QR code shown by Horizon.</string>
 	<!-- A real launch storyboard is the unambiguous "supports full screen" signal. An empty
 	     UILaunchScreen dict is fragile (and ignored under LiveContainer), which can drop the
 	     app into letterbox/compatibility mode where the home indicator and safe-area insets

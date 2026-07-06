@@ -29,6 +29,7 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
     private let nativeClipboard = NativeClipboard()
     private let nativeBackground = NativeBackground()
     private let nativeSocket = NativeSocket()
+    private let nativeSync = NativeSync()
     private lazy var nativeView = NativeView(host: self)
 
     // Matches the Android profileRegex — f-list.net profile links are shown in the in-app
@@ -61,6 +62,7 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         ucc.addScriptMessageHandler(nativeBackground, contentWorld: .page, name: "nativeBackground")
         nativeSocket.host = self
         ucc.addScriptMessageHandler(nativeSocket, contentWorld: .page, name: "nativeSocket")
+        ucc.addScriptMessageHandler(nativeSync, contentWorld: .page, name: "nativeSync")
         ucc.addScriptMessageHandler(nativeView, contentWorld: .page, name: "nativeView")
         config.userContentController = ucc
 
@@ -205,6 +207,15 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
             completionHandler(alert.textFields?.first?.text)
         })
         topPresenter().present(alert, animated: true)
+    }
+
+    // The Device Sync QR scanner opens the camera via getUserMedia. Grant so WebKit shows its own
+    // camera prompt (backed by NSCameraUsageDescription in Info.plist); the camera is used nowhere else.
+    @available(iOS 15.0, *)
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                 initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
+                 decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        decisionHandler(.grant)
     }
 
     // MARK: - Notifications (UNUserNotificationCenterDelegate)

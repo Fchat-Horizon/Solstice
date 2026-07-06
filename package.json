@@ -40,11 +40,11 @@
     "esbuild-loader": "^4.4.3",
     "file-loader": "^6.2.0",
     "fork-ts-checker-webpack-plugin": "^9.1.0",
-    "node-polyfill-webpack-plugin": "^4.1.0",
     "husky": "^9.1.7",
     "lint-staged": "^15.5.2",
     "lodash": "^4.17.21",
     "mini-css-extract-plugin": "^2.10.2",
+    "node-polyfill-webpack-plugin": "^4.1.0",
     "prettier": "^3.8.3",
     "qs": "^6.15.1",
     "raw-loader": "^4.0.2",
@@ -74,6 +74,7 @@
     "@ghostery/adblocker-extended-selectors": "^2.14.1",
     "adm-zip": "^0.5.17",
     "archiver": "^7.0.1",
+    "jsqr": "^1.4.0",
     "node-fetch": "^2.7.0",
     "vuedraggable": "^2.24.3"
   },
@@ -92,6 +93,7 @@
     "lint": "pnpm prettier --write .",
     "check": "pnpm prettier --check .",
     "typecheck": "pnpm --filter solstice-electron typecheck",
+    "test": "node mobile/sync/run-tests.mjs",
     "prepare": "husky"
   },
   "pnpm": {

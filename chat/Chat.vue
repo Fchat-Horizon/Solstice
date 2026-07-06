@@ -62,6 +62,16 @@
           <a
             v-if="isMobilePlatform"
             href="#"
+            @click.prevent="deviceSync()"
+            class="btn"
+            title="Sync chat logs with Horizon on the same Wi-Fi network"
+          >
+            <span class="fa fa-sync"></span>
+            <span class="btn-text">Device sync</span>
+          </a>
+          <a
+            v-if="isMobilePlatform"
+            href="#"
             @click.prevent="saveCrashLog()"
             class="btn"
             title="Save a diagnostic log of any recent errors (no chat content) to share in a bug report"
@@ -597,6 +607,13 @@
 
       exportData(): void {
         EventBus.$emit('open-mobile-exporter', {});
+      },
+
+      // Mobile only: open the LAN log sync dialog (mobile/DeviceSyncDialog.vue). Shown on the
+      // character-select screen, before a character is connected, so the merge never races the
+      // live log writer.
+      deviceSync(): void {
+        EventBus.$emit('open-mobile-device-sync', {});
       },
 
       // Mobile only: hand the sanitized '!crashlog' (error type + code-location stack frames, no chat

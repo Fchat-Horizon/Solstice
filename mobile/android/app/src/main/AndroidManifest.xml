@@ -9,13 +9,21 @@
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 	<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
 		android:maxSdkVersion="28" />
+	<!-- Device Sync scans the QR code Horizon shows (getUserMedia in the WebView). -->
+	<uses-permission android:name="android.permission.CAMERA" />
+	<uses-feature android:name="android.hardware.camera" android:required="false" />
 
+	<!-- usesCleartextTraffic: Device Sync (Sync.kt) connects over plain HTTP to Horizon on the local
+	     network. The peer's address is a dynamic private IP, which a network-security-config cannot
+	     scope to (it matches hosts, not subnets), so cleartext is permitted at the app level. All
+	     other traffic (F-List chat, profile/avatar loads) is HTTPS/WSS and unaffected. -->
 	<application
 		android:allowBackup="true"
 		android:icon="@mipmap/ic_launcher"
 		android:label="@string/app_name"
 		android:roundIcon="@mipmap/ic_launcher"
 		android:supportsRtl="true"
+		android:usesCleartextTraffic="true"
 		android:theme="@android:style/Theme.Holo.NoActionBar">
 		<activity android:name=".MainActivity" android:launchMode="singleInstance"
 				  android:exported="true"

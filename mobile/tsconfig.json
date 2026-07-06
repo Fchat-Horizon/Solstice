@@ -1,7 +1,12 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    // The log sync core (mobile/sync) uses explicit .ts import specifiers so it also runs directly
+    // under Node's test runner (node --test with type stripping); allow them here for the type check.
+    // noEmit is required alongside this option and is a no-op for the build (esbuild-loader emits).
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   },
   "include": ["chat.ts", "../**/*.d.ts"]
 }

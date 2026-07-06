@@ -3,6 +3,9 @@
     import Vue from 'vue';
     import AdmZip from 'adm-zip';
     import ExporterVue from '../electron/Exporter.vue';
+    import {mergeLogs} from './sync/archive';
+    import {parseBinaryLog} from './sync/logMessage';
+    import {NativeSyncStorage} from './sync/nativeStorage';
 
     function isPCFormat(zip: AdmZip): boolean {
         return zip.getEntries().some((e: any) => !e.isDirectory && (e.entryName as string).startsWith('characters/'));
@@ -15,55 +18,6 @@
             const m = JSON.parse(entry.getData().toString('utf8'));
             return m?.includes?.jsonLogs === true;
         } catch { return false; }
-    }
-
-    function jsonLogToBinary(messages: Array<{time: number; type: number; sender: string; text: string}>): Buffer {
-        const enc = new TextEncoder();
-        const parts: Uint8Array[] = [];
-        for (const msg of messages) {
-            const senderB = enc.encode(msg.sender);
-            const textB = enc.encode(msg.text);
-            const msgLen = 8 + senderB.length + textB.length;
-            const buf = new Uint8Array(msgLen + 2);
-            const v = new DataView(buf.buffer);
-            v.setUint32(0, msg.time, true);
-            v.setUint8(4, msg.type);
-            v.setUint8(5, senderB.length);
-            buf.set(senderB, 6);
-            v.setUint16(6 + senderB.length, textB.length, true);
-            buf.set(textB, 8 + senderB.length);
-            v.setUint16(msgLen, msgLen, true);
-            parts.push(buf);
-        }
-        const total = parts.reduce((s, p) => s + p.length, 0);
-        const out = Buffer.allocUnsafe(total);
-        let off = 0;
-        for (const p of parts) { out.set(p, off); off += p.length; }
-        return out;
-    }
-
-    function buildLogIndex(name: string, messages: Array<{time: number; sender: string; text: string}>): Buffer {
-        const enc = new TextEncoder();
-        const nameB = enc.encode(name);
-        const dayEntries: Array<{day: number; offset: number}> = [];
-        let pos = 0;
-        let lastDay = -1;
-        for (const msg of messages) {
-            const day = Math.floor(msg.time / 86400);
-            if (day !== lastDay) { dayEntries.push({ day, offset: pos }); lastDay = day; }
-            pos += 10 + enc.encode(msg.sender).length + enc.encode(msg.text).length;
-        }
-        const idxBuf = Buffer.allocUnsafe(1 + nameB.length + dayEntries.length * 7);
-        idxBuf[0] = nameB.length;
-        idxBuf.set(nameB, 1);
-        let ip = 1 + nameB.length;
-        for (const e of dayEntries) {
-            idxBuf.writeInt16LE(e.day, ip);
-            idxBuf.writeUInt32LE(e.offset >>> 0, ip + 2);
-            idxBuf[ip + 6] = Math.floor(e.offset / 0x100000000) & 0xFF;
-            ip += 7;
-        }
-        return idxBuf;
     }
 
     export default Vue.extend({
@@ -230,9 +184,10 @@
                     };
 
                     // Override runZipImport: supports both PC exports (characters/CharName/... layout)
-                    // and mobile exports (CharName/... layout). Log files use the same custom binary
-                    // format on both platforms and are written via NativeFile.writeBytes (base64) to
-                    // avoid corruption from UTF-8 string round-tripping.
+                    // and mobile exports (CharName/... layout). Settings files are written verbatim;
+                    // chat logs are normalized to the sync zip's JSON layout and merged (message-level
+                    // union, idempotent) through the shared sync merge, so re-importing a backup never
+                    // drops or duplicates messages. Logs use the same binary format on both platforms.
                     vm.runZipImport = async () => {
                         if (!vm.importZipArchive || vm.importInProgress) return;
                         vm.importInProgress = true;
@@ -253,6 +208,15 @@
                                 if (!ensured.has(path)) { NativeFile.ensureDirectory(path); ensured.add(path); }
                             };
 
+                            // Collect every selected log entry as the sync zip's JSON layout, then merge once.
+                            const logZip = new AdmZip();
+                            let hasLogs = false;
+                            const addJsonLog = (charName: string, key: string, messages: unknown[]) => {
+                                logZip.addFile(`characters/${charName}/logs/${key}.json`,
+                                    Buffer.from(JSON.stringify(messages), 'utf8'));
+                                hasLogs = true;
+                            };
+
                             for (const entry of zip.getEntries()) {
                                 if (entry.isDirectory) continue;
                                 const name: string = entry.entryName;
@@ -266,30 +230,31 @@
                                     }
                                     if (!name.startsWith('characters/')) continue;
                                     const parts = name.split('/');
-                                    if (parts.length < 4) continue; // need characters/CharName/category/file
+                                    if (parts.length < 3) continue;
                                     const charName = parts[1];
+                                    // logs-names.json rides along so channel display names survive the merge.
+                                    if (parts.length === 3 && parts[2] === 'logs-names.json') {
+                                        if (vm.importIncludeLogs && selectedChars.has(charName))
+                                            logZip.addFile(`characters/${charName}/logs-names.json`, entry.getData());
+                                        continue;
+                                    }
+                                    if (parts.length < 4) continue; // need characters/CharName/category/file
                                     if (!selectedChars.has(charName)) continue;
                                     const category = parts[2];
                                     const rest = parts.slice(3).join('/');
 
                                     if (category === 'logs') {
                                         if (!vm.importIncludeLogs) continue;
-                                        ensureDir(charName);
-                                        ensureDir(`${charName}/logs`);
-                                        if (pcJsonLogs && rest.endsWith('.json')) {
-                                            const key = rest.slice(0, -5);
-                                            try {
+                                        try {
+                                            if (pcJsonLogs && rest.endsWith('.json')) {
                                                 const messages = JSON.parse(entry.getData().toString('utf8'));
-                                                if (Array.isArray(messages) && messages.length > 0) {
-                                                    const bin = jsonLogToBinary(messages);
-                                                    const idx = buildLogIndex(key, messages);
-                                                    await NativeFile.writeBytes(`${charName}/logs/${key}`, bin.toString('base64'));
-                                                    await NativeFile.writeBytes(`${charName}/logs/${key}.idx`, idx.toString('base64'));
-                                                }
-                                            } catch { /* skip corrupt entries */ }
-                                        } else {
-                                            try { await NativeFile.writeBytes(`${charName}/logs/${rest}`, entry.getData().toString('base64')); } catch { /* skip */ }
-                                        }
+                                                if (Array.isArray(messages) && messages.length > 0)
+                                                    addJsonLog(charName, rest.slice(0, -5), messages);
+                                            } else {
+                                                const messages = parseBinaryLog(entry.getData());
+                                                if (messages.length > 0) addJsonLog(charName, rest, messages);
+                                            }
+                                        } catch { /* skip corrupt entries */ }
                                     } else if (category === 'settings') {
                                         if (!vm.importIncludeCharacterSettings) continue;
                                         ensureDir(charName);
@@ -316,20 +281,25 @@
                                     if (isLog && !vm.importIncludeLogs) continue;
                                     if (!isLog && !vm.importIncludeCharacterSettings) continue;
 
-                                    ensureDir(charName);
-                                    if (isLog) ensureDir(`${charName}/logs`);
-
-                                    try {
-                                        if (isLog) {
-                                            await NativeFile.writeBytes(name, entry.getData().toString('base64'));
-                                        } else {
-                                            await NativeFile.write(name, entry.getData().toString('utf8'));
-                                        }
-                                    } catch { /* skip unwritable entries */ }
+                                    if (isLog) {
+                                        try {
+                                            const messages = parseBinaryLog(entry.getData());
+                                            if (messages.length > 0) addJsonLog(charName, parts.slice(2).join('/'), messages);
+                                        } catch { /* skip corrupt entries */ }
+                                    } else {
+                                        ensureDir(charName);
+                                        try { await NativeFile.write(name, entry.getData().toString('utf8')); } catch { /* skip unwritable entries */ }
+                                    }
                                 }
                             }
 
-                            vm.importSummary = 'Import complete. Restart the app to apply changes.';
+                            let mergedNote = '';
+                            if (hasLogs) {
+                                const stats = await mergeLogs(logZip.toBuffer(), new NativeSyncStorage());
+                                if (stats.messagesAdded > 0)
+                                    mergedNote = ` ${stats.messagesAdded} new message${stats.messagesAdded === 1 ? '' : 's'} merged.`;
+                            }
+                            vm.importSummary = `Import complete. Restart the app to apply changes.${mergedNote}`;
                         } catch {
                             vm.importError = 'Import failed.';
                         } finally {

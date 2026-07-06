@@ -51,6 +51,7 @@
         <chat v-else :ownCharacters="characters" :defaultCharacter="defaultCharacter" ref="chat"></chat>
         <app-settings-dialog ref="appSettingsDialog"></app-settings-dialog>
         <app-exporter-dialog ref="appExporterDialog"></app-exporter-dialog>
+        <device-sync-dialog ref="deviceSyncDialog"></device-sync-dialog>
         <modal :buttons="false" ref="profileViewer" dialogClass="profile-viewer">
             <character-page :authenticated="true" :oldApi="true" :name="profileName"></character-page>
             <template slot="title">{{profileName}} <a class="btn" @click="openProfileInBrowser"><i class="fa fa-external-link-alt"></i></a>
@@ -73,6 +74,7 @@
     import {appVersion, GeneralSettings, getGeneralSettings, setGeneralSettings, SettingsStore} from './filesystem';
     import AppSettingsDialog from './AppSettingsDialog.vue';
     import AppExporterDialog from './AppExporterDialog.vue';
+    import DeviceSyncDialog from './DeviceSyncDialog.vue';
     import UpdateBanner from './UpdateBanner.vue';
     import { EventBus } from '../chat/preview/event-bus';
     import { notifyConfigJSON, pushNotifyConfig } from './notifyConfig';
@@ -91,7 +93,7 @@
     }
 
     export default Vue.extend({
-        components: {chat: Chat, modal: Modal, characterPage: CharacterPage, 'app-settings-dialog': AppSettingsDialog, 'app-exporter-dialog': AppExporterDialog, 'update-banner': UpdateBanner},
+        components: {chat: Chat, modal: Modal, characterPage: CharacterPage, 'app-settings-dialog': AppSettingsDialog, 'app-exporter-dialog': AppExporterDialog, 'device-sync-dialog': DeviceSyncDialog, 'update-banner': UpdateBanner},
         data() {
             return {
                 showAdvanced: false,
@@ -199,6 +201,9 @@
             });
             EventBus.$on('open-mobile-exporter', () => {
                 (<any>this.$refs['appExporterDialog']).show();
+            });
+            EventBus.$on('open-mobile-device-sync', () => {
+                (<any>this.$refs['deviceSyncDialog']).show();
             });
             // iOS: keep the native background-notify config (chat.ts pushes it on connect) current as
             // channels are joined/left and notification settings change. Watching the serialized config

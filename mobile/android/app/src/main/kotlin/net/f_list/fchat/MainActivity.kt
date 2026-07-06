@@ -40,6 +40,7 @@ class MainActivity : Activity() {
 	private var debugPressed = 0
 	private val debugHandler = Handler(Looper.getMainLooper())
 	private var filePathCallback: ValueCallback<Array<Uri>>? = null
+	private var pendingCameraPermissionRequest: PermissionRequest? = null
 
 	private fun jsQuote(value: String?): String {
 		return value?.let { JSONObject.quote(it) } ?: "null"
@@ -82,6 +83,7 @@ class MainActivity : Activity() {
 		webView.addJavascriptInterface(backgroundPlugin, "NativeBackground")
 		webView.addJavascriptInterface(Logs(this), "NativeLogs")
 		webView.addJavascriptInterface(Clipboard(this), "NativeClipboard")
+		webView.addJavascriptInterface(Sync { js -> runOnUiThread { webView.evaluateJavascript(js, null) } }, "SyncBridge")
 		webView.setDownloadListener { url, _, _, _, _ ->
 			if(Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
 				val permission = checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -103,7 +105,16 @@ class MainActivity : Activity() {
 			}
 
 			override fun onPermissionRequest(request: PermissionRequest) {
-				request.grant(request.resources)
+				// The Device Sync QR scanner opens the camera via getUserMedia. Granting the WebView's
+				// request only works once the app itself holds the OS CAMERA permission, so request it
+				// first when missing and grant from onRequestPermissionsResult.
+				if(request.resources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+						&& checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+					pendingCameraPermissionRequest = request
+					requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST)
+				} else {
+					request.grant(request.resources)
+				}
 			}
 
 			override fun onJsConfirm(view: WebView, url: String, message: String, result: JsResult): Boolean {
@@ -161,7 +172,23 @@ class MainActivity : Activity() {
 		}
 	}
 
-	companion object { private const val FILE_CHOOSER_REQUEST = 1001 }
+	override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+		super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+		if(requestCode == CAMERA_PERMISSION_REQUEST) {
+			val request = pendingCameraPermissionRequest
+			pendingCameraPermissionRequest = null
+			if(request != null) {
+				if(grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)
+					request.grant(request.resources)
+				else request.deny()
+			}
+		}
+	}
+
+	companion object {
+		private const val FILE_CHOOSER_REQUEST = 1001
+		private const val CAMERA_PERMISSION_REQUEST = 1002
+	}
 
 	val keepAlive = object : Runnable {
 		override fun run() {
