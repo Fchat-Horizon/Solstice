@@ -189,7 +189,7 @@
         });
       }
       Sortable.create(<HTMLElement>this.$refs['channelList'], {
-        group: { name: 'channels', pull: true, put: true },
+        group: { name: 'channels', pull: true, put: ['channels'] },
         animation: 50,
         fallbackTolerance: 5,
         // Touch only: require a brief hold before a drag can start, so a jittery tap opens the channel

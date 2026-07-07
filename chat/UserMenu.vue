@@ -338,7 +338,7 @@
       },
       close(): void {
         if (!this.showContextMenu) return;
-        document.removeEventListener('click', this.closeOnOutsideClick);
+        document.removeEventListener('click', this.closeOnOutsideClick, true);
         this.showContextMenu = false;
         this.touchedElement = undefined;
         this.$emit('close');
@@ -346,7 +346,7 @@
       closeOnOutsideClick(e: MouseEvent): void {
         const menu = this.getMenuElement();
         if (menu && menu.contains(e.target as Node)) return;
-        document.removeEventListener('click', this.closeOnOutsideClick);
+        document.removeEventListener('click', this.closeOnOutsideClick, true);
         this.close();
       },
       openConversation(jump: boolean): void {
@@ -586,12 +586,15 @@
         });
 
         // Defer registration to the next macrotask so the click/tap that
-        // opened the menu finishes bubbling first — otherwise on mobile (where
-        // the menu opens from a synthetic click) that same event reaches
-        // document and immediately triggers closeOnOutsideClick.
-        document.removeEventListener('click', this.closeOnOutsideClick);
+        // opened the menu finishes dispatching first, otherwise on mobile
+        // (where the menu opens from a synthetic click) that same event
+        // reaches document and immediately triggers closeOnOutsideClick.
+        // Capture phase, so clicks that stop propagation (e.g. the bbcode
+        // editor's toolbar buttons) still dismiss the menu.
+        document.removeEventListener('click', this.closeOnOutsideClick, true);
         setTimeout(
-          () => document.addEventListener('click', this.closeOnOutsideClick),
+          () =>
+            document.addEventListener('click', this.closeOnOutsideClick, true),
           0
         );
       }

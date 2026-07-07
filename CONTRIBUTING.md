@@ -151,3 +151,5 @@ We use [Prettier](https://prettier.io/) to enforce a consistent coding style. Pl
    - Follow the [Vue style guide](https://v2.vuejs.org/v2/style-guide) to the best of your ability.
 
 A important part of Solstice is a strict code quality standard. Prettier should do most of the work for you.
+
+When writing user-facing text strings, please make sure to **always** use the [localization system](./docs/localize.md).

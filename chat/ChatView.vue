@@ -339,7 +339,7 @@
           >
             {{ conversations.consoleTab.unreadCount }}
           </span>
-          {{ conversations.consoleTab.name }}
+          <div class="name">{{ conversations.consoleTab.name }}</div>
         </a>
         <a
           v-for="conversation in conversations.privateConversations"
@@ -648,7 +648,7 @@
         }
       });
       Sortable.create(<HTMLElement>this.$refs['channelConversations'], {
-        group: { name: 'channels', pull: true, put: true },
+        group: { name: 'channels', pull: true, put: ['channels'] },
         sort: true,
         animation: 150,
         fallbackTolerance: 5,
@@ -1256,7 +1256,7 @@
         let groupId = '';
         if (core.conversations.channelGroups.length < 1) {
           groupId = core.conversations.createChannelGroup(
-            l('channel.group.ungrouped')
+            l('channel.group.pinned')
           );
         } else {
           groupId = core.conversations.channelGroups[0].id;
@@ -1432,6 +1432,7 @@
           img {
             height: 40px;
             width: 40px;
+            object-fit: contain;
             margin: 0;
           }
 
@@ -1487,6 +1488,7 @@
       img {
         height: 40px;
         width: 40px;
+        object-fit: contain;
         margin: -1px 5px -1px -1px;
       }
       &:first-child img,
@@ -1502,7 +1504,8 @@
 
   #quick-switcher {
     margin: 0 45px 5px;
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: hidden;
     display: none;
     align-items: stretch;
     flex-direction: row;
@@ -1518,11 +1521,15 @@
     }
 
     a {
-      width: 40px;
+      width: 50px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      padding: 5px 4px;
       position: relative;
-      text-align: center;
       line-height: 1;
-      padding: 5px 5px 0;
       overflow: hidden;
       flex-shrink: 0;
       &:first-child {
@@ -1534,29 +1541,44 @@
       &:last-child {
         border-radius: 0 4px 4px 0;
       }
+      &.active {
+        z-index: 1;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+      }
     }
 
     img {
-      width: 30px;
-    }
-
-    .name {
-      overflow: hidden;
-      white-space: nowrap;
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+      flex-shrink: 0;
     }
 
     .conversation-icon {
       font-size: 1.6rem;
-      height: 30px;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .name {
+      max-width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 0.7rem;
     }
 
     .badge {
       position: absolute;
       top: 2px;
       right: 2px;
-      font-size: 0.9em;
-      min-width: 2em;
-      height: 2em;
+      font-size: 0.8em;
+      min-width: 1.6em;
+      height: 1.6em;
       padding: 0 4px;
       border-radius: 9px;
       display: inline-flex;
@@ -1564,7 +1586,7 @@
       justify-content: center;
       line-height: 1;
       z-index: 1;
-      box-shadow: 0 0 0 3px var(--bs-list-group-bg, var(--bs-body-bg));
+      box-shadow: 0 0 0 2px var(--bs-list-group-bg, var(--bs-body-bg));
     }
   }
 
