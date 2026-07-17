@@ -8,4 +8,4 @@ export const SOLSTICE_VERSION = (<{ version: string }>(
   require('../package.json') //tslint:disable-line:no-require-imports
 )).version;
 
-export const HORIZON_BASE_VERSION = '2.3.2';
+export const HORIZON_BASE_VERSION = '2.3.3';
