@@ -3,8 +3,11 @@
         <div class="ds-card">
             <div class="ds-header">
                 <h3 class="ds-title">Device sync</h3>
-                <button class="btn btn-sm btn-outline-secondary" :disabled="isRunning" @click="close">
-                    {{ isTerminal ? 'Done' : 'Cancel' }}
+                <!-- Cancel/back affordance for the pre-run and running states only. On the summary and
+                     error screens the phase's own button is the dismiss, so a header button here would
+                     just duplicate it (a second "Done"). -->
+                <button v-if="!isTerminal" class="btn btn-sm btn-outline-secondary" :disabled="isRunning" @click="close">
+                    Cancel
                 </button>
             </div>
 

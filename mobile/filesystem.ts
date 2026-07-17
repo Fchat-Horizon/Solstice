@@ -49,6 +49,9 @@ export class GeneralSettings {
     showSeconds = false;
     // Whether the in-app update check should also surface prereleases (betas).
     updateCheckPrereleases = false;
+    // Whether the hidden Device Sync entry point has been revealed (toggled from the
+    // character-select filter; see the filterText watcher in chat/Chat.vue).
+    deviceSyncUnlocked = false;
 }
 
 type Index = {[key: string]: {name: string, dates: number[]} | undefined};

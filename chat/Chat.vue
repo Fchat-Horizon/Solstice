@@ -60,7 +60,7 @@
             <span class="btn-text">{{ l('settings.export.title') }}</span>
           </a>
           <a
-            v-if="isMobilePlatform"
+            v-if="isMobilePlatform && syncUnlocked"
             href="#"
             @click.prevent="deviceSync()"
             class="btn"
@@ -232,6 +232,19 @@
   import { AdManager } from './ads/ad-manager';
   import { EventBus } from './preview/event-bus';
 
+  // Gates a mobile test-only feature behind a phrase typed into the character
+  // filter. Only an FNV-1a digest of the phrase is stored, so the phrase itself
+  // does not appear in the source.
+  const gateDigest = 0x7a8ea3db;
+  function digest(text: string): number {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return hash;
+  }
+
   type BBCodeNode = Node & { bbcodeTag?: string; bbcodeParam?: string };
 
   function copyNode(
@@ -325,7 +338,8 @@
         connected: false,
         l: l,
         copyPlain: false,
-        filterText: ''
+        filterText: '',
+        syncUnlocked: false
       };
     },
     computed: {
@@ -372,6 +386,22 @@
         return core.state.generalSettings?.horizonShowTips ?? false;
       }
     },
+    watch: {
+      // Mobile only: typing the gate phrase into the character filter toggles the
+      // hidden Device sync button and persists the choice in the app settings.
+      filterText(value: string): void {
+        if (!this.isMobilePlatform) return;
+        if (digest(value.trim().toLowerCase()) !== gateDigest) return;
+        this.syncUnlocked = !this.syncUnlocked;
+        this.filterText = '';
+        const settings = (window as any).__generalSettings; //tslint:disable-line:no-any
+        const save = (window as any).__setGeneralSettings; //tslint:disable-line:no-any
+        if (settings !== undefined && typeof save === 'function') {
+          settings.deviceSyncUnlocked = this.syncUnlocked;
+          void save(settings);
+        }
+      }
+    },
     mounted(): void {
       // Load persisted character pins (native-backed on mobile, localStorage on desktop).
       try {
@@ -380,6 +410,10 @@
         log.debug('characterPins.parseFailed', { error: e });
         this.pinnedIds = [];
       }
+
+      if (this.isMobilePlatform)
+        this.syncUnlocked =
+          (window as any).__generalSettings?.deviceSyncUnlocked === true; //tslint:disable-line:no-any
 
       document.title = l('title', core.connection.character);
       document.addEventListener('copy', ((e: ClipboardEvent) => {
