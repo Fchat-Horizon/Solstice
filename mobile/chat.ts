@@ -133,6 +133,22 @@ function logCrash(label: string, err: unknown): void {
     }
 }
 
+// Lightweight diagnostic breadcrumbs written to the same exportable '!crashlog' as crashes: JS boots,
+// app foreground/background transitions, and connection lifecycle. This exists to diagnose the iOS
+// "disconnects on return from background" report: a WebContent jetsam kill leaves NO JS trace (the
+// process is SIGKILLed), but the reload it forces does - so a `boot` entry appearing shortly after a
+// `visibility hidden`, with no clean `conn closed` in between, is the fingerprint of iOS jetsam-killing
+// the backgrounded WebView, which is why the connection drops. Reverse-chronological like the rest of
+// the file. Records only state labels - never names, messages, or any user content.
+function logDiag(label: string, detail?: string): void {
+    try {
+        const when = new Date().toISOString();
+        void persistCrash(`[${when}] ${label}${detail !== undefined ? ' ' + detail : ''}\n`);
+    } catch {
+        // diagnostics must never throw
+    }
+}
+
 function installErrorCapture(): void {
     window.addEventListener('error', (event: ErrorEvent) =>
         logCrash('window.onerror', event.error !== undefined ? event.error : event.message));
@@ -247,6 +263,16 @@ function installDomGuards(): void {
 // Install the guards + error capture before the app mounts (new Index(...) below).
 if (document.documentElement.dataset.mobilePlatform === 'true') installResilience();
 
+// Background-disconnect diagnostics (see logDiag): record each JS boot and every foreground/background
+// transition. On iOS the app process is held alive by the audio keep-alive, but iOS can still
+// jetsam-kill the WebContent child while backgrounded; that shows up here as a `boot` right after a
+// `visibility hidden` (the WebView reloaded and reconnected fresh).
+if (document.documentElement.dataset.mobilePlatform === 'true') {
+    logDiag('boot', document.documentElement.dataset.mobileOs);
+    document.addEventListener('visibilitychange', () =>
+        logDiag('visibility', document.visibilityState));
+}
+
 // Issue 10: long-pressing a link/eicon/avatar can start a native HTML5 drag of the element, which on
 // touch leaves the WebView in a stuck gesture state that swallows subsequent taps (the app appears
 // frozen until restart). The CSS in Index.vue sets `-webkit-user-drag: none`, but not every WebView
@@ -301,6 +327,19 @@ const soundThemeContext = (require as any).context('../chat/sound-themes', true,
 const SocketProvider = (window as any).NativeSocket !== undefined ? NativeSocketConnection : Socket; //tslint:disable-line:no-any
 const connection = new Connection('Solstice (Mobile)', appVersion, SocketProvider);
 initCore(connection, new GeneralSettings() as any, Logs, SettingsStore, Notifications);
+
+// Background-disconnect diagnostics (see logDiag): log the connection lifecycle so the exported log
+// shows how often, and how, the socket drops. `closed (unexpected)` is an unclean close the JS
+// actually saw (network drop, PIN-timeout close); a `boot` with no preceding `closed` means the
+// WebView was killed (jetsam) and reconnected fresh - the two are distinguished in the log.
+if (document.documentElement.dataset.mobilePlatform === 'true') {
+    connection.onEvent('connecting', () => logDiag('conn', 'connecting'));
+    connection.onEvent('connected', (isReconnect: boolean) =>
+        logDiag('conn', isReconnect ? 'connected (reconnect)' : 'connected'));
+    connection.onEvent('closed', (unclean: boolean) =>
+        logDiag('conn', unclean ? 'closed (unexpected)' : 'closed (clean)'));
+    connection.onError((e: Error) => logDiag('conn-error', describeError(e).name));
+}
 
 // On iOS the native socket fires notifications for messages that arrive while the app is
 // backgrounded (JS is suspended then). Push the full background-notify config (character, ignore/mute
