@@ -43,14 +43,24 @@ final class NativeBackground: NSObject, WKScriptMessageHandlerWithReply {
                            name: AVAudioSession.interruptionNotification, object: nil)
         center.addObserver(self, selector: #selector(handleRouteChange(_:)),
                            name: AVAudioSession.routeChangeNotification, object: nil)
+        // mediaserverd (the media server) can reset - rare, but more likely under memory pressure,
+        // which the WebView creates plenty of. A reset invalidates the audio session AND every
+        // AVAudioPlayer, so the keep-alive tone stops for good, the app is suspended, and the native
+        // socket dies: a silent, intermittent background disconnect. Rebuild everything on reset.
+        center.addObserver(self, selector: #selector(handleMediaReset),
+                           name: AVAudioSession.mediaServicesWereResetNotification, object: nil)
+        // Safety net: a background audio restart can silently fail (you can't always reactivate the
+        // session while suspended). On every return to the foreground, make sure the tone is still
+        // playing so the NEXT backgrounding is protected even if the last recovery didn't take.
+        center.addObserver(self, selector: #selector(ensureAudio),
+                           name: UIApplication.didBecomeActiveNotification, object: nil)
         startAudio()
     }
 
     private func stop() {
         guard active else { return }
         active = false
-        NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: nil)
-        NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: nil)
+        NotificationCenter.default.removeObserver(self)
         player?.stop()
         player = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
@@ -67,9 +77,15 @@ final class NativeBackground: NSObject, WKScriptMessageHandlerWithReply {
                 player = try AVAudioPlayer(data: Self.makeKeepAliveWAV())
                 player?.numberOfLoops = -1
             }
-            player?.play()
+            // play() returns false when the player is orphaned (e.g. after a media-server reset). A
+            // stale player that won't play is the same as no keep-alive, so rebuild it once and retry.
+            if player?.play() != true {
+                player = try AVAudioPlayer(data: Self.makeKeepAliveWAV())
+                player?.numberOfLoops = -1
+                player?.play()
+            }
         } catch {
-            // Audio unavailable (e.g. host didn't grant background audio) — fall back to the
+            // Audio unavailable (e.g. host didn't grant background audio): fall back to the
             // background-task grace window only. Won't keep alive long, but won't crash.
         }
     }
@@ -82,6 +98,22 @@ final class NativeBackground: NSObject, WKScriptMessageHandlerWithReply {
     }
 
     @objc private func handleRouteChange(_ note: Notification) {
+        guard active, player?.isPlaying != true else { return }
+        startAudio()
+    }
+
+    // After a media-server reset every audio object is dead; dispose the old player unconditionally
+    // (isPlaying can't be trusted here) and rebuild the whole chain from scratch.
+    @objc private func handleMediaReset() {
+        guard active else { return }
+        player?.stop()
+        player = nil
+        startAudio()
+    }
+
+    // Foreground safety net: only restarts if the tone actually stopped, so a healthy session is
+    // left untouched.
+    @objc private func ensureAudio() {
         guard active, player?.isPlaying != true else { return }
         startAudio()
     }
