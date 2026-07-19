@@ -476,7 +476,7 @@ class PrivateConversation
       this.safeAddMessage(message);
 
       await this.logMessage(message, false);
-      core.cache.deregisterConversationDraft(this.key);
+      core.cache.deregisterConversationDraft(this.name);
       this.markRead();
     });
   }
@@ -1263,10 +1263,9 @@ async function initConversationCache(this: Conversation): Promise<void> {
   // Restore message draft if it exists (e.g. accidentally closing the tab). Be sure the cache is reset for a new character if needed.
   await core.cache.conversationDraftCache.resetCacheIfNeeded();
 
-  // Only an open conversation knows both the display name pre-key drafts were stored under and its unique key.
-  core.cache.migrateConversationDraft(this.name, this.key);
-
-  const draft = core.cache.getConversationDraft(this.key);
+  // Solstice keys drafts by conversation name; the upstream switch to unique keys was
+  // reverted here (see the revert of "key message drafts by conversation key", issue #409).
+  const draft = core.cache.getConversationDraft(this.name);
   this.enteredText = draft;
 
   if (!this.cacheActive) {
@@ -1286,8 +1285,8 @@ async function initConversationCache(this: Conversation): Promise<void> {
       }
 
       this.enteredText
-        ? core.cache.registerConversationDraft(this.key, this.enteredText)
-        : core.cache.deregisterConversationDraft(this.key);
+        ? core.cache.registerConversationDraft(this.name, this.enteredText)
+        : core.cache.deregisterConversationDraft(this.name);
     }, CONVERSATION_CACHE_UPDATE_FREQ_IN_MS);
   }
 }
