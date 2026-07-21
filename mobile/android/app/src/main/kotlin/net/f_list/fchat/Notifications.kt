@@ -73,7 +73,11 @@ class Notifications(private val ctx: Context) {
 
 	@JavascriptInterface
 	fun notify(notify: Boolean, title: String, text: String, icon: String, sound: String?, data: String?): Int {
-		if(sound != null) {
+		// Respect the ring switch for the notification ping: no audible ping when the phone is on
+		// vibrate or silent, so a message doesn't announce itself out loud in your pocket (issue #13).
+		// The vibration still fires below. iOS needs no equivalent: its background UNNotificationSound
+		// already honors the silent switch.
+		if(sound != null && (ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager).ringerMode == AudioManager.RINGER_MODE_NORMAL) {
 			playSoundFile(sound)
 		}
 		if(!notify) {
