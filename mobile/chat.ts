@@ -356,12 +356,15 @@ if ((window as any).NativeSocket !== undefined) { //tslint:disable-line:no-any
             || core.state.settings.soundTheme || 'default';
         (window as any).NativeNotification.setSoundTheme(soundTheme); //tslint:disable-line:no-any
     });
-    // Discord-style: opening a conversation clears its background notification and drops the unread
-    // badge. select-conversation also fires on a notification tap (mobile/notifications.ts -> conv.show()).
+}
+
+// Discord-style: opening a conversation clears its background notification and drops the unread badge,
+// on BOTH platforms (iOS via NativeSocket.clearConversation, Android via NativeNotification.cancelConversation).
+// select-conversation also fires on a notification tap (mobile/notifications.ts -> conv.show()).
+if (document.documentElement.dataset.mobilePlatform === 'true')
     EventBus.$on('select-conversation', (data: SelectConversationEvent) => {
         if (data.conversation !== null) clearConversationNotification(data.conversation.key);
     });
-}
 
 // On desktop the ad coordinator host lives in the Electron main process; on mobile there
 // is no main process, so host it here in the WebView. Without this, the guest's

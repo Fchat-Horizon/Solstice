@@ -8,6 +8,7 @@ declare global {
         playSound(sound: string): void
         requestPermission(): void
         setSoundTheme(theme: string): void
+        cancelConversation?(key: string): void
     };
 }
 
