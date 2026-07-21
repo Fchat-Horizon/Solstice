@@ -74,6 +74,9 @@ class Notifications(private val ctx: Context) {
 		val pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 		val notification = Notification.Builder(ctx).setContentTitle(title).setContentText(text).setSmallIcon(R.drawable.ic_notification).setAutoCancel(true)
 				.setContentIntent(PendingIntent.getActivity(ctx, 1, intent, pendingIntentFlags)).setDefaults(Notification.DEFAULT_VIBRATE or Notification.DEFAULT_LIGHTS)
+				// Classify as a message so Android's notification ranking treats it as a conversation and
+				// doesn't demote it into a low-priority/promotional bucket (issue #14).
+				.setCategory(Notification.CATEGORY_MESSAGE)
 		if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) notification.setChannelId("messages")
 		object : AsyncTask<String, Void, Bitmap>() {
 			override fun doInBackground(vararg args: String): Bitmap? {
