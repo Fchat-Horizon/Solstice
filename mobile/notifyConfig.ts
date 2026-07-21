@@ -87,3 +87,14 @@ export function pushNotifyConfig(json: string): void {
 export function sendNotifyConfig(): void {
     pushNotifyConfig(notifyConfigJSON());
 }
+
+// Clear a conversation's delivered notification and reset its unread count/badge natively when the user
+// opens it (Discord-style one-notification-per-conversation). No-op off iOS (bridge global absent) or on
+// an older native build without the method.
+export function clearConversationNotification(key: string): void {
+    const native = (window as any).NativeSocket as //tslint:disable-line:no-any
+        | { clearConversation(key: string): void }
+        | undefined;
+    if (native === undefined || typeof native.clearConversation !== 'function') return;
+    native.clearConversation(key);
+}

@@ -1,6 +1,7 @@
 import UIKit
 import WebKit
 import UserNotifications
+import AudioToolbox
 
 // Native WebSocket transport for iOS, used instead of the browser WebSocket (chat/WebSocket.ts).
 //
@@ -40,6 +41,13 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
     private var globalWatched: Set<String> = []
     private var channels: [String: ChannelCfg] = [:]
 
+    // One notification per conversation (Discord-style): each conversation key maps to how many unread
+    // messages its single notification represents. Drives the "(N)" title suffix and the app icon badge;
+    // reset per conversation when the user opens it (clearConversation).
+    private var unreadCounts: [String: Int] = [:]
+    // Rate-limit the notification vibration so a busy notify-all channel can't buzz continuously.
+    private var lastVibrateMs = 0
+
     override init() {
         super.init()
         let nc = NotificationCenter.default
@@ -56,6 +64,7 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         switch call.method {
         case "connect": connect(call.string(0)); replyHandler(nil, nil)
         case "setNotifyConfig": applyNotifyConfig(call.string(0)); replyHandler(nil, nil)
+        case "clearConversation": clearConversation(call.string(0)); replyHandler(nil, nil)
         case "send": task?.send(.string(call.string(0))) { _ in }; replyHandler(nil, nil)
         case "close":
             // Explicit close (e.g. logout): tear down and emit a clean close so the JS Connection's
@@ -209,19 +218,36 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
     }
 
     private func postNotification(title: String, body: String, key: String, avatar: String) {
+        // One notification per conversation: count this message, then reuse the conversation key as the
+        // notification identifier so a new message REPLACES that conversation's notification instead of
+        // stacking a fresh one. threadIdentifier keeps conversations grouped in Notification Center.
+        let count = (unreadCounts[key] ?? 0) + 1
+        unreadCounts[key] = count
+
         let content = UNMutableNotificationContent()
-        content.title = title.isEmpty ? "Solstice" : title
+        // Surface the unread count once a conversation has more than one waiting message ("Sarah (3)").
+        let baseTitle = title.isEmpty ? "Solstice" : title
+        content.title = count > 1 ? "\(baseTitle) (\(count))" : baseTitle
         content.body = body
         // The current theme's PM/highlight sound (copied to Library/Sounds), or the system default.
         content.sound = SoundThemes.notificationSound(for: "attention")
         content.userInfo = ["data": key]
-        // Group per conversation so a busy (notify-on-every-message) channel collapses into one stack in
-        // Notification Center instead of flooding it with separate banners.
         content.threadIdentifier = key
+        // App icon badge = total unread messages across all conversations.
+        content.badge = NSNumber(value: unreadCounts.values.reduce(0, +))
+
+        // Vibrate. UIFeedbackGenerator only fires while foregrounded, but the audio keep-alive keeps this
+        // process alive, so AudioServicesPlaySystemSound can still drive the haptic motor from the
+        // background. Motor only (no audio-session change), so it can't disturb the keep-alive tone.
+        let nowMs = Int(Date().timeIntervalSince1970 * 1000)
+        if nowMs - lastVibrateMs > 1500 {
+            lastVibrateMs = nowMs
+            AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+        }
 
         func submit(_ attachments: [UNNotificationAttachment]) {
             content.attachments = attachments
-            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            let request = UNNotificationRequest(identifier: key, content: content, trigger: nil)
             UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
         }
 
@@ -246,6 +272,20 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
             }
             DispatchQueue.main.async { submit(attachments) }
         }.resume()
+    }
+
+    // The user opened a conversation (JS fires this via the select-conversation event): remove its
+    // delivered notification, reset its unread count, and refresh the app icon badge to the new total.
+    private func clearConversation(_ key: String) {
+        guard !key.isEmpty else { return }
+        unreadCounts.removeValue(forKey: key)
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [key])
+        let total = unreadCounts.values.reduce(0, +)
+        if #available(iOS 16.0, *) {
+            UNUserNotificationCenter.current().setBadgeCount(total)
+        } else {
+            UIApplication.shared.applicationIconBadgeNumber = total
+        }
     }
 
     private func stripBBCode(_ s: String) -> String {

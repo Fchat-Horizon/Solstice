@@ -60,10 +60,15 @@ final class NativeNotification: NSObject, WKScriptMessageHandlerWithReply, AVAud
         content.title = title
         content.body = text
         content.userInfo = ["data": data]
+        // One notification per conversation: the JS layer passes conversation.key as `data`, so reuse it
+        // as the identifier (a new message replaces that conversation's banner instead of stacking) and
+        // the thread id (Notification Center grouping). Fall back to a constant when no key is given.
+        let key = data.isEmpty ? Self.notificationIdentifier : data
+        content.threadIdentifier = key
 
         func submit(_ attachments: [UNNotificationAttachment]) {
             content.attachments = attachments
-            let request = UNNotificationRequest(identifier: Self.notificationIdentifier, content: content, trigger: nil)
+            let request = UNNotificationRequest(identifier: key, content: content, trigger: nil)
             UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
         }
 

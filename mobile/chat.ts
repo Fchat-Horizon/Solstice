@@ -48,7 +48,8 @@ import Connection from '../fchat/connection';
 import {appVersion, GeneralSettings, Logs, SettingsStore} from './filesystem';
 import Index from './Index.vue';
 import Notifications from './notifications';
-import {sendNotifyConfig} from './notifyConfig';
+import {sendNotifyConfig, clearConversationNotification} from './notifyConfig';
+import {EventBus, SelectConversationEvent} from '../chat/preview/event-bus';
 
 const version = (<{version: string}>require('./package.json')).version; //tslint:disable-line:no-require-imports
 (<any>window)['setupPlatform'] = (platform: string) => { //tslint:disable-line:no-any
@@ -354,6 +355,11 @@ if ((window as any).NativeSocket !== undefined) { //tslint:disable-line:no-any
         const soundTheme = (core.state as any).generalSettings?.soundTheme //tslint:disable-line:no-any
             || core.state.settings.soundTheme || 'default';
         (window as any).NativeNotification.setSoundTheme(soundTheme); //tslint:disable-line:no-any
+    });
+    // Discord-style: opening a conversation clears its background notification and drops the unread
+    // badge. select-conversation also fires on a notification tap (mobile/notifications.ts -> conv.show()).
+    EventBus.$on('select-conversation', (data: SelectConversationEvent) => {
+        if (data.conversation !== null) clearConversationNotification(data.conversation.key);
     });
 }
 
