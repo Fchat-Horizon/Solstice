@@ -946,6 +946,23 @@
     flex-direction: column;
   }
 
+  // On mobile the logs dialog is meant to fill the screen. Without an explicit
+  // height the modal-content sizes to its content, and because the message list
+  // has overflow:auto its flex min-size collapses to 0, so the flex-shrink:0
+  // filter rows eat the space and the log messages get squeezed into a sliver.
+  // Give the dialog real full height and let the message list take what's left,
+  // which also lets it shrink cleanly when the keyboard opens (adjustResize).
+  html[data-mobile-platform='true'] {
+    .logs-dialog .modal-content {
+      height: 100%;
+    }
+
+    .logs-dialog .messages {
+      flex: 1 1 0;
+      min-height: 0;
+    }
+  }
+
   .message-container {
     position: relative;
   }
