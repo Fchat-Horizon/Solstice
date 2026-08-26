@@ -30,42 +30,42 @@
           <div class="modal-body">
             <div class="d-flex" style="flex: 1; min-height: 0">
               <div class="data-manager-sidebar">
-                <a
+                <button
+                  type="button"
                   class="nav-link"
                   :class="{ active: selectedSection === 'auto-backup' }"
-                  href="#"
-                  @click.prevent="selectedSection = 'auto-backup'"
+                  @click="selectedSection = 'auto-backup'"
                 >
                   <i class="fas fa-fw fa-clock-rotate-left me-2"></i
                   >{{ l('settings.dataManager.section.autoBackup') }}
-                </a>
-                <a
+                </button>
+                <button
+                  type="button"
                   class="nav-link"
                   :class="{ active: selectedSection === 'export' }"
-                  href="#"
-                  @click.prevent="selectedSection = 'export'"
+                  @click="selectedSection = 'export'"
                 >
                   <i class="fas fa-fw fa-file-export me-2"></i
                   >{{ l('settings.dataManager.section.export') }}
-                </a>
-                <a
+                </button>
+                <button
+                  type="button"
                   class="nav-link"
                   :class="{ active: selectedSection === 'import' }"
-                  href="#"
-                  @click.prevent="selectedSection = 'import'"
+                  @click="selectedSection = 'import'"
                 >
                   <i class="fas fa-fw fa-file-import me-2"></i
                   >{{ l('settings.dataManager.section.import') }}
-                </a>
-                <a
+                </button>
+                <button
+                  type="button"
                   class="nav-link"
                   :class="{ active: selectedSection === 'vanilla' }"
-                  href="#"
-                  @click.prevent="selectedSection = 'vanilla'"
+                  @click="selectedSection = 'vanilla'"
                 >
                   <i class="fas fa-fw fa-file-arrow-down me-2"></i
                   >{{ l('settings.dataManager.section.vanilla') }}
-                </a>
+                </button>
               </div>
               <div class="data-manager-content hidden-scrollbar">
                 <div
@@ -1861,9 +1861,21 @@
     min-width: 200px;
     border-right: 1px solid var(--bs-border-color);
     padding: 0.5rem 0;
+    // Keep the sidebar (and its tab buttons) above the content pane so taps
+    // always land on the tabs, even if a sibling is ever painted over them.
+    position: relative;
+    z-index: 1;
   }
 
   .data-manager-sidebar .nav-link {
+    display: block;
+    width: 100%;
+    text-align: left;
+    // Reset the <button> chrome so the tabs match the rest of the sidebar.
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font-family: inherit;
     color: var(--bs-body-color);
     padding: 0.5rem 1rem;
     font-size: 0.875rem;
