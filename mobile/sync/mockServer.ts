@@ -34,6 +34,8 @@ export class MockSyncServer {
     receivedUpload: Uint8Array | undefined = undefined;
     finished = false;
     forceSessionEnded = false;
+    /** When set, answer the matching /v1/logs route with 413 archive-too-large. */
+    forceArchiveTooLarge: 'get' | 'post' | undefined = undefined;
 
     private paired = false;
     private readonly server: http.Server;
@@ -73,10 +75,14 @@ export class MockSyncServer {
         if(route === 'POST /v1/handshake') return this.handshake(res, body);
         if(route === 'GET /v1/logs') {
             if(!this.paired) return this.respond(res, 409, await this.encJson({error: 'not-paired'}));
+            if(this.forceArchiveTooLarge === 'get')
+                return this.respond(res, 413, await this.encJson({error: 'archive-too-large'}));
             return this.respond(res, 200, await encryptBody(this.key, this.logsToServe));
         }
         if(route === 'POST /v1/logs') {
             if(!this.paired) return this.respond(res, 409, await this.encJson({error: 'not-paired'}));
+            if(this.forceArchiveTooLarge === 'post')
+                return this.respond(res, 413, await this.encJson({error: 'archive-too-large'}));
             try { this.receivedUpload = await decryptBody(this.key, body); } catch { /* leave undefined */ }
             return this.respond(res, 200, await this.encJson({ok: true, ...this.mergeStatsToReturn}));
         }

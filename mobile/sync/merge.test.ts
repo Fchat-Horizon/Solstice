@@ -1,9 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import AdmZip from 'adm-zip';
-import {buildSyncArchive, mergeLogs} from './archive.ts';
+import {archiveUncompressedBytes, ArchiveTooLargeError, buildSyncArchive, mergeLogs} from './archive.ts';
+import {isFilesystemArtifact} from './logMessage.ts';
 import type {LogMessage} from './logMessage.ts';
 import {MemorySyncStorage} from './memoryStorage.ts';
+import {inflateDeclaredSizes} from './oversizedArchive.ts';
+import {SYNC_MAX_UNCOMPRESSED_BYTES} from './payload.ts';
 
 function msg(time: number, type: number, sender: string, text: string): LogMessage {
     return {time, type, sender, text};
@@ -164,4 +167,82 @@ test('merge: path-traversal entries are ignored', async () => {
     assert.equal(stats.messagesAdded, 1);
     assert.equal(stats.charactersTouched, 1);
     assert.deepEqual(await store.allMessages('Alice', 'bob'), [m]);
+});
+
+// MARK: Type + artifact screening
+
+test('merge: message types outside the defined 0-6 range are skipped', async () => {
+    const store = new MemorySyncStorage();
+    const bcast = msg(1_700_000_000, 6, 'Bob', 'bcast');    // 6 = Bcast, the highest defined type
+    const justOver = msg(1_700_000_001, 7, 'Bob', 'undefined type');
+    const byteMax = msg(1_700_000_002, 255, 'Bob', 'fits a u8 but undefined');
+    const stats = await mergeLogs(archive({Alice: {bob: [bcast, justOver, byteMax]}}), store);
+
+    assert.equal(stats.messagesAdded, 1);
+    assert.deepEqual(await store.allMessages('Alice', 'bob'), [bcast]);
+});
+
+test('isFilesystemArtifact: matches shell litter, not real conversation keys', () => {
+    for(const name of ['.DS_Store', 'Thumbs.db', 'thumbs.db', 'desktop.ini', 'Thumbs.db.json', 'DESKTOP.INI.json'])
+        assert.ok(isFilesystemArtifact(name), `expected artifact: ${name}`);
+    for(const name of ['bob', '#frontpage', 'thumbsdb', 'my.desktop.ini.log', 'notes.json'])
+        assert.equal(isFilesystemArtifact(name), false, `expected real key: ${name}`);
+});
+
+test('merge: filesystem artifacts are not materialized as conversations', async () => {
+    const store = new MemorySyncStorage();
+    const m = msg(1_700_000_000, 0, 'X', 'hi');
+    const zip = new AdmZip();
+    // A peer that did not screen its log dir ships shell litter as `.json` entries.
+    zip.addFile('characters/Alice/logs/Thumbs.db.json', Buffer.from(JSON.stringify([m])));
+    zip.addFile('characters/Alice/logs/desktop.ini.json', Buffer.from(JSON.stringify([m])));
+    zip.addFile('characters/Alice/logs/bob.json', Buffer.from(JSON.stringify([m])));
+    const stats = await mergeLogs(new Uint8Array(zip.toBuffer()), store);
+
+    assert.equal(stats.messagesAdded, 1);
+    assert.equal(stats.charactersTouched, 1);
+    assert.deepEqual(Object.keys(await store.loadIndex('Alice')), ['bob']);
+    assert.deepEqual(await store.allMessages('Alice', 'bob'), [m]);
+});
+
+// MARK: Size caps
+
+test('archiveUncompressedBytes: sums the entries\' declared uncompressed sizes', () => {
+    const a = Buffer.from(JSON.stringify([msg(1, 0, 'A', 'x')]));
+    const b = Buffer.from(JSON.stringify([msg(2, 0, 'B', 'yy')]));
+    const zip = new AdmZip();
+    zip.addFile('characters/Alice/logs/bob.json', a);
+    zip.addFile('characters/Alice/logs/cat.json', b);
+    assert.equal(archiveUncompressedBytes(new AdmZip(zip.toBuffer())), a.length + b.length);
+});
+
+test('merge: rejects an archive that declares more than the uncompressed cap', async () => {
+    const store = new MemorySyncStorage();
+    const normal = archive({Alice: {bob: [msg(1_700_000_000, 0, 'Bob', 'hi')]}});
+    // Each entry now declares ~2.4 GiB uncompressed while the real data stays tiny.
+    const oversized = inflateDeclaredSizes(normal, 0x90000000);
+    assert.ok(archiveUncompressedBytes(new AdmZip(Buffer.from(oversized))) > SYNC_MAX_UNCOMPRESSED_BYTES);
+
+    await assert.rejects(mergeLogs(oversized, store), (e: unknown) =>
+        e instanceof ArchiveTooLargeError && e.direction === 'incoming');
+    // Rejected before decompressing or merging anything.
+    assert.equal(store.writeCount, 0);
+    assert.deepEqual(await store.allMessages('Alice', 'bob'), []);
+});
+
+test('merge: a normal archive under the cap still merges', async () => {
+    const store = new MemorySyncStorage();
+    const zip = archive({Alice: {bob: [msg(1_700_000_000, 0, 'Bob', 'hi')]}});
+    assert.ok(archiveUncompressedBytes(new AdmZip(Buffer.from(zip))) <= SYNC_MAX_UNCOMPRESSED_BYTES);
+    assert.equal((await mergeLogs(zip, store)).messagesAdded, 1);
+});
+
+test('buildSyncArchive: rejects when the built archive exceeds the body cap', async () => {
+    const store = new MemorySyncStorage();
+    await store.seed('Alice', 'bob', 'Bob', [msg(1_700_000_000, 0, 'Bob', 'hi')]);
+    // A tiny cap stands in for the 512 MiB limit; building a real 512 MiB buffer is impractical.
+    await assert.rejects(buildSyncArchive(store, 10), (e: unknown) =>
+        e instanceof ArchiveTooLargeError && e.direction === 'outgoing');
+    // The default cap leaves a normal archive well within bounds.
+    assert.ok((await buildSyncArchive(store)).length > 0);
 });

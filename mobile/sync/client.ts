@@ -12,7 +12,7 @@
  * TypeScript port of Luna's `LogSyncClient`.
  */
 
-import {buildSyncArchive, mergeLogs} from './archive.ts';
+import {ArchiveTooLargeError, buildSyncArchive, mergeLogs} from './archive.ts';
 import type {MergeStats} from './archive.ts';
 import {decryptBody, encryptBody} from './crypto.ts';
 import {SyncError} from './payload.ts';
@@ -93,13 +93,22 @@ class SyncSession {
         const downloaded = await this.getLogs(base);
         // Snapshot the upload before merging, so the desktop's own messages are not echoed back to
         // it (its merge would discard them, but the upload would needlessly double in size).
-        const upload = await buildSyncArchive(store);
+        let upload: Buffer;
+        try {
+            upload = await buildSyncArchive(store);
+        } catch(error) {
+            if(error instanceof ArchiveTooLargeError)
+                throw fail({type: 'archiveTooLarge', direction: error.direction});
+            throw error;
+        }
 
         onStage?.('merging');
         let received: MergeStats;
         try {
             received = await mergeLogs(downloaded, store);
-        } catch {
+        } catch(error) {
+            if(error instanceof ArchiveTooLargeError)
+                throw fail({type: 'archiveTooLarge', direction: error.direction});
             throw fail({type: 'badResponse', detail: 'the received log archive is not a valid zip'});
         }
 
@@ -240,9 +249,19 @@ export function describeSyncError(kind: SyncErrorKind): string {
                 case 'not-paired':
                     return 'The session dropped before it finished. Start a new Device Sync in Horizon '
                         + 'and scan the new code.';
+                case 'archive-too-large':
+                    return 'The logs are too large to sync in one transfer. Retrying won\'t help. '
+                        + 'Clear out some old logs on one of the devices, then start a new Device Sync.';
                 default:
                     return `Horizon reported an error (${kind.code}). Start a new Device Sync and try again.`;
             }
+        case 'archiveTooLarge':
+            return kind.direction === 'outgoing'
+                ? 'This device has too many logs to sync in one transfer (over the 512 MB limit). '
+                    + 'Retrying won\'t help. Clear out some old logs on this device, then try again.'
+                : 'The other device sent more log data than can be merged in one transfer '
+                    + '(over the 2 GB limit). Retrying won\'t help. Sync from a device with fewer logs, '
+                    + 'or clear out some old logs there first.';
         case 'badResponse':
             return 'Got an unexpected response from Horizon. Start a new Device Sync and try again.';
         case 'transport':
