@@ -14,6 +14,20 @@ export const SYNC_PROTOCOL_VERSION = 1;
 export const SYNC_KEY_LENGTH = 32;
 
 /**
+ * Archive size caps, kept numerically identical to Horizon's `protocol.ts` so
+ * neither side rejects what the other accepts (Horizon repo issue #931).
+ *
+ * `SYNC_MAX_BODY_BYTES` bounds any (encrypted) HTTP body, and so the outgoing
+ * archive we upload. `SYNC_MAX_UNCOMPRESSED_BYTES` bounds a *received* archive's
+ * total uncompressed size: the body cap already limits the compressed upload,
+ * but a compressed zip can inflate far past it, so a received archive is checked
+ * against this before any entry is decompressed. Horizon answers
+ * `413 {"error": "archive-too-large"}` when either bound is exceeded.
+ */
+export const SYNC_MAX_BODY_BYTES = 512 * 1024 * 1024;              // 512 MiB, compressed/encrypted body
+export const SYNC_MAX_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB, total uncompressed archive
+
+/**
  * The session document Horizon encodes into its Device Sync QR code (and offers
  * as copyable text):
  *
@@ -50,6 +64,8 @@ export type SyncErrorKind =
     | {type: 'sessionEnded'}
     /** The desktop reported a protocol error code (e.g. "busy", "already-paired"). */
     | {type: 'remote', code: string}
+    /** An archive on this device hit a size cap; retrying the same logs won't help. */
+    | {type: 'archiveTooLarge', direction: 'incoming' | 'outgoing'}
     /** The desktop answered something undecryptable or undecodable. */
     | {type: 'badResponse', detail: string}
     /** The connection failed mid-session. */

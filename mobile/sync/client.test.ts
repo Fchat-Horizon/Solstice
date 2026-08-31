@@ -1,13 +1,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {buildSyncArchive, mergeLogs} from './archive.ts';
-import {runSync, SYNC_STAGES} from './client.ts';
+import {describeSyncError, runSync, SYNC_STAGES} from './client.ts';
 import type {SyncDeviceInfo, SyncStage} from './client.ts';
 import {MemorySyncStorage} from './memoryStorage.ts';
 import {MockSyncServer} from './mockServer.ts';
 import {NodeSyncTransport} from './nodeTransport.ts';
+import {inflateDeclaredSizes} from './oversizedArchive.ts';
 import {SyncError} from './payload.ts';
-import type {SyncSessionPayload} from './payload.ts';
+import type {SyncErrorKind, SyncSessionPayload} from './payload.ts';
 
 const DEVICE: SyncDeviceInfo = {deviceName: 'Test Phone', platform: 'ios', appVersion: 'test'};
 
@@ -138,4 +139,58 @@ test('client: a wrong token reports unauthorized', async () => {
     } finally {
         server.stop();
     }
+});
+
+// MARK: Archive size caps
+
+test('client: a 413 on GET /v1/logs surfaces the remote archive-too-large code', async () => {
+    const server = await MockSyncServer.start({account: 'Acc'});
+    server.forceArchiveTooLarge = 'get';
+    try {
+        await assert.rejects(run(payloadFor(server, 'Acc'), new MemorySyncStorage(), 'Acc'), (e: unknown) =>
+            e instanceof SyncError && e.kind.type === 'remote' && e.kind.code === 'archive-too-large');
+    } finally {
+        server.stop();
+    }
+});
+
+test('client: a 413 on POST /v1/logs surfaces the remote archive-too-large code', async () => {
+    const server = await MockSyncServer.start({account: 'Acc'});
+    server.forceArchiveTooLarge = 'post';
+    try {
+        await assert.rejects(run(payloadFor(server, 'Acc'), new MemorySyncStorage(), 'Acc'), (e: unknown) =>
+            e instanceof SyncError && e.kind.type === 'remote' && e.kind.code === 'archive-too-large');
+    } finally {
+        server.stop();
+    }
+});
+
+test('client: a received archive over the uncompressed cap reports archiveTooLarge, not badResponse', async () => {
+    // The desktop serves a valid archive whose entries *declare* > 2 GiB uncompressed. The merge
+    // rejects it before decompressing; the client must map that to archiveTooLarge (the try/catch
+    // around mergeLogs previously collapsed every failure into a generic badResponse).
+    const desktop = await storeWith({Alice: {bob: [1_700_000_000, 0, 'Bob', 'from desktop']}});
+    const oversized = inflateDeclaredSizes(await buildSyncArchive(desktop), 0x90000000);
+    const server = await MockSyncServer.start({account: 'Acc', logsToServe: oversized});
+    try {
+        await assert.rejects(run(payloadFor(server, 'Acc'), new MemorySyncStorage(), 'Acc'), (e: unknown) =>
+            e instanceof SyncError && e.kind.type === 'archiveTooLarge' && e.kind.direction === 'incoming');
+    } finally {
+        server.stop();
+    }
+});
+
+test('describeSyncError: the archive-too-large messages are clear and non-retryable', () => {
+    const kinds: SyncErrorKind[] = [
+        {type: 'remote', code: 'archive-too-large'},
+        {type: 'archiveTooLarge', direction: 'incoming'},
+        {type: 'archiveTooLarge', direction: 'outgoing'}
+    ];
+    for(const kind of kinds) {
+        const message = describeSyncError(kind);
+        assert.ok(message.includes('won\'t help'), `expected non-retryable wording: ${message}`);
+    }
+    // Not the generic remote fallback.
+    assert.notEqual(describeSyncError({type: 'remote', code: 'archive-too-large'}),
+        'Horizon reported an error (archive-too-large). Start a new Device Sync and try again.');
 });
