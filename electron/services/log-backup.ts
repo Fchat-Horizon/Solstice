@@ -24,7 +24,9 @@
 
 import fs from 'fs';
 import path from 'path';
-import { TextDecoder } from 'util';
+// TextDecoder is a WHATWG global in both Node 18+ and the browser/WebView, so we use
+// the global instead of importing it from 'util'. The mobile bundle's util polyfill
+// does not expose TextDecoder, and importing it there throws at module load.
 
 /** One message inside a JSON log file. Times are seconds since epoch. */
 export interface JsonLogMessage {
