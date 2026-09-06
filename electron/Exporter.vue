@@ -66,6 +66,16 @@
                   <i class="fas fa-fw fa-file-arrow-down me-2"></i
                   >{{ l('settings.dataManager.section.vanilla') }}
                 </a>
+                <a
+                  v-if="!isMobilePlatform"
+                  class="nav-link"
+                  :class="{ active: selectedSection === 'device-sync' }"
+                  href="#"
+                  @click.prevent="selectedSection = 'device-sync'"
+                >
+                  <i class="fas fa-fw fa-qrcode me-2"></i
+                  >{{ l('settings.dataManager.section.deviceSync') }}
+                </a>
               </div>
               <div class="data-manager-content hidden-scrollbar">
                 <div
@@ -349,10 +359,9 @@
                         class="form-text text-muted"
                       >
                         {{
-                          l(
-                            'settings.autoBackup.estimatedUsage',
-                            estimatedRetentionSize
-                          )
+                          l('settings.autoBackup.estimatedUsage', {
+                            size: estimatedRetentionSize
+                          })
                         }}
                       </small>
                     </div>
@@ -371,39 +380,56 @@
                         <button
                           class="btn btn-outline-secondary"
                           type="button"
-                          @click="chooseAutoBackupDir"
+                          @click="openAutoBackupDir"
+                          :title="
+                            l('platform.open', {
+                              name: l(`platform.fileExplorer.${platform}`)
+                            })
+                          "
                         >
-                          {{ l('settings.autoBackup.directoryBrowse') }}
+                          <span class="fas fa-fw fa-folder-open"></span>
+                        </button>
+                        <button
+                          class="btn btn-outline-secondary"
+                          type="button"
+                          @click="chooseAutoBackupDir"
+                          :title="l('settings.autoBackup.directoryBrowse')"
+                        >
+                          <span class="fas fa-fw fa-folder-plus"></span>
                         </button>
                         <button
                           v-if="settings.autoBackupDirectory"
-                          class="btn btn-outline-secondary"
+                          class="btn btn-outline-danger"
                           type="button"
                           @click="settings.autoBackupDirectory = ''"
+                          :title="l('action.reset')"
                         >
-                          {{ l('settings.autoBackup.directoryReset') }}
+                          <span class="fas fa-fw fa-rotate-left"></span>
                         </button>
                       </div>
                       <small class="form-text text-muted">
                         {{
-                          l(
-                            'settings.autoBackup.directoryDefault',
-                            defaultBackupDir
-                          )
+                          settings.autoBackupDirectory
+                            ? l('settings.autoBackup.directoryDefault', {
+                                dir: defaultBackupDir
+                              })
+                            : l('settings.autoBackup.directoryDefault.unset')
                         }}
                       </small>
                     </div>
                   </div>
 
-                  <div v-if="settings.autoBackupEnabled" class="mt-3 mb-2">
+                  <div
+                    v-if="settings.autoBackupEnabled"
+                    class="mt-3 mb-2 w-100"
+                  >
                     <h6>{{ l('settings.autoBackup.restoreTitle') }}</h6>
                     <p class="text-muted small">
                       {{ l('settings.autoBackup.restoreDescription') }}
                     </p>
-                    <div class="d-flex align-items-center gap-2 mb-2">
+                    <div class="input-group mb-2">
                       <select
                         class="form-select"
-                        style="max-width: 400px"
                         v-model="selectedAutoBackup"
                         :disabled="importInProgress"
                       >
@@ -423,10 +449,11 @@
                         </option>
                       </select>
                       <button
-                        class="btn btn-outline-secondary btn-sm"
+                        class="btn btn-outline-secondary"
                         type="button"
-                        :disabled="importInProgress"
+                        :disabled="importInProgress || !selectedAutoBackup"
                         @click="refreshAutoBackups"
+                        :title="l('action.restore')"
                       >
                         <i class="fas fa-sync-alt"></i>
                       </button>
@@ -643,7 +670,11 @@
                       {{ l('settings.import.zip.choose') }}
                     </button>
                     <div class="form-text" v-if="importZipName">
-                      {{ l('settings.import.zip.selected', importZipName) }}
+                      {{
+                        l('settings.import.zip.selected', {
+                          file: importZipName
+                        })
+                      }}
                     </div>
                     <div class="form-text text-muted" v-else>
                       {{ l('settings.import.zip.noFile') }}
@@ -662,17 +693,17 @@
                     class="alert alert-info small mb-3"
                   >
                     {{
-                      l(
-                        'settings.import.zip.manifestBanner',
-                        importZipManifest.version,
-                        importZipManifest.characters.length,
-                        importZipManifest.expectedFiles,
-                        new Date(importZipManifest.createdAt).toLocaleString(),
-                        importZipManifest.includes &&
+                      l('settings.import.zip.manifestBanner', {
+                        version: importZipManifest.version,
+                        characters: importZipManifest.characters.length,
+                        files: importZipManifest.expectedFiles,
+                        created: formatDateTime(importZipManifest.createdAt),
+                        logs:
+                          importZipManifest.includes &&
                           importZipManifest.includes.jsonLogs
-                          ? l('settings.import.zip.manifestBannerJson')
-                          : l('settings.import.zip.manifestBannerBinary')
-                      )
+                            ? l('settings.import.zip.manifestBannerJson')
+                            : l('settings.import.zip.manifestBannerBinary')
+                      })
                     }}
                   </div>
                   <div
@@ -1041,7 +1072,9 @@
                   <div v-if="vanillaImportAvailable" class="mb-3">
                     <div class="alert alert-info" v-if="vanillaBaseDir">
                       {{
-                        l('settings.import.vanilla.location', vanillaBaseDir)
+                        l('settings.import.vanilla.location', {
+                          dir: vanillaBaseDir
+                        })
                       }}
                     </div>
                     <div class="form-check mb-2">
@@ -1220,6 +1253,111 @@
                     {{ l('settings.import.vanilla.notFound') }}
                   </div>
                 </div>
+                <div
+                  v-if="!isMobilePlatform"
+                  v-show="selectedSection === 'device-sync'"
+                  class="settings-content"
+                >
+                  <h5>{{ l('sync.title') }}</h5>
+                  <div
+                    class="text-muted border-top border-warning mb-4 w-75 bg-light p-3 bg-opacity-10"
+                  >
+                    {{ l('sync.betaInfo') }}
+                  </div>
+                  <p class="text-muted">{{ l('sync.description') }}</p>
+                  <div
+                    v-if="anyCharactersConnected"
+                    class="alert alert-warning"
+                  >
+                    {{ l('sync.error.lockedWhileConnected') }}
+                    <span v-if="connectedCharacters.length">
+                      ({{ connectedCharacters.join(', ') }})
+                    </span>
+                  </div>
+                  <div v-if="!syncActive" class="mb-3">
+                    <button
+                      class="btn btn-primary"
+                      type="button"
+                      :disabled="anyCharactersConnected"
+                      @click="startSyncSession"
+                    >
+                      <i class="fas fa-fw fa-qrcode me-1"></i>
+                      {{ l('sync.start') }}
+                    </button>
+                  </div>
+                  <div v-else class="mb-3">
+                    <p>{{ l('sync.scanHint') }}</p>
+                    <div class="mb-3">
+                      <img
+                        v-if="syncQrDataUrl"
+                        :src="syncQrDataUrl"
+                        class="sync-qr"
+                        :alt="l('sync.qrAlt')"
+                      />
+                    </div>
+                    <p class="mb-1">
+                      <span
+                        class="spinner-border spinner-border-sm me-2"
+                        role="status"
+                      ></span>
+                      {{ describeSyncState() }}
+                    </p>
+                    <p v-if="syncAddressText" class="text-muted small mb-3">
+                      {{ l('sync.addresses', { addresses: syncAddressText }) }}
+                    </p>
+                    <div class="mb-3">
+                      <label class="form-label label-full">
+                        {{ l('sync.manualHint') }}
+                      </label>
+                      <div class="input-group">
+                        <input
+                          class="form-control"
+                          type="text"
+                          readonly
+                          :value="syncPayloadText"
+                          @focus="$event.target.select()"
+                        />
+                        <button
+                          class="btn"
+                          :class="
+                            syncPayloadCopied
+                              ? 'btn-success'
+                              : 'btn-outline-secondary'
+                          "
+                          type="button"
+                          @click="copySyncPayload"
+                          :aria-label="
+                            syncPayloadCopied
+                              ? l('action.copy.success')
+                              : l('sync.copyPayload')
+                          "
+                        >
+                          <i
+                            class="fa-fw"
+                            :class="
+                              syncPayloadCopied
+                                ? 'fa-check fa-solid'
+                                : 'fa-regular fa-copy'
+                            "
+                          ></i>
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      class="btn btn-secondary"
+                      type="button"
+                      @click="stopSyncSession"
+                    >
+                      {{ l('sync.stop') }}
+                    </button>
+                  </div>
+                  <div v-if="syncSummary" class="alert alert-success">
+                    {{ syncSummary }}
+                  </div>
+                  <div v-if="syncError" class="alert alert-danger">
+                    {{ syncError }}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1244,7 +1382,8 @@
 <script lang="ts">
   import * as remote from '@electron/remote';
   import Vue from 'vue';
-  import l from '../chat/localize';
+  import { format } from 'date-fns';
+  import l, { dateLocale, setLanguage } from '../chat/localize';
   import { GeneralSettings } from './common';
   import fs from 'fs';
   import path from 'path';
@@ -1272,7 +1411,8 @@
           | 'auto-backup'
           | 'export'
           | 'import'
-          | 'vanilla',
+          | 'vanilla'
+          | 'device-sync',
         isMac: process.platform === 'darwin',
         platform: process.platform,
 
@@ -1340,6 +1480,18 @@
         importUseCustomLogLocation: false,
         importCustomLogLocationError: undefined as string | undefined,
 
+        syncActive: false,
+        syncState: 'idle',
+        syncQrDataUrl: undefined as string | undefined,
+        syncPayloadText: undefined as string | undefined,
+        syncPayloadCopied: false,
+        syncAddressText: undefined as string | undefined,
+        syncPeerName: undefined as string | undefined,
+        syncSummary: undefined as string | undefined,
+        syncError: undefined as string | undefined,
+        closePending: false,
+        closeApproved: false,
+
         connectedCharacters: [] as string[],
         autoBackups: [] as {
           name: string;
@@ -1351,6 +1503,9 @@
       };
     },
     computed: {
+      isMobilePlatform(): boolean {
+        return document.documentElement.dataset.mobilePlatform === 'true';
+      },
       anyCharactersConnected(): boolean {
         return (
           Array.isArray(this.connectedCharacters) &&
@@ -1534,10 +1689,29 @@
       remote.nativeTheme.on('updated', () => {
         this.osIsDark = remote.nativeTheme.shouldUseDarkColors;
       });
+      try {
+        setLanguage(this.settings.displayLanguage);
+      } catch (e) {
+        console.warn('Failed to set display language', e);
+      }
 
       window.addEventListener('beforeunload', e => {
-        if (this.exportInProgress || this.importInProgress) {
+        if (this.closeApproved) {
+          this.closeApproved = false;
+          return;
+        }
+        if (this.syncActive) {
           e.preventDefault();
+          void this.close();
+          return;
+        }
+        if (
+          this.exportInProgress ||
+          this.importInProgress ||
+          this.vanillaImportInProgress
+        ) {
+          e.preventDefault();
+          return;
         }
       });
 
@@ -1628,6 +1802,13 @@
       ipcRenderer.on('connected-characters-updated', (_e, list: string[]) => {
         this.connectedCharacters = Array.isArray(list) ? list : [];
       });
+
+      this.$watch(
+        () => this.anyCharactersConnected,
+        connected => {
+          if (connected) ImportExport.abortSyncForConnectedCharacter(this);
+        }
+      );
     },
     methods: {
       getSyncedTheme() {
@@ -1685,6 +1866,22 @@
       runZipImport(): Promise<void> {
         return ImportExport.runZipImport(this);
       },
+      startSyncSession(): Promise<void> {
+        return ImportExport.startSyncSession(this);
+      },
+      stopSyncSession(): Promise<void> {
+        return ImportExport.stopSyncSession(this);
+      },
+      copySyncPayload(): void {
+        ImportExport.copySyncPayload(this);
+        this.syncPayloadCopied = true;
+        window.setTimeout(() => {
+          this.syncPayloadCopied = false;
+        }, 3500);
+      },
+      describeSyncState(): string {
+        return ImportExport.describeSyncState(this);
+      },
       async chooseAutoBackupDir(): Promise<void> {
         const result = await remote.dialog.showOpenDialog(browserWindow, {
           properties: ['openDirectory'],
@@ -1695,6 +1892,9 @@
           this.settings.autoBackupDirectory = result.filePaths[0];
         }
       },
+      async openAutoBackupDir(): Promise<void> {
+        ipcRenderer.send('open-dir', this.settings.logDirectory);
+      },
       async refreshAutoBackups(): Promise<void> {
         try {
           this.autoBackups = await ipcRenderer.invoke('list-auto-backups');
@@ -1702,12 +1902,15 @@
           this.autoBackups = [];
         }
       },
+      formatDateTime(value: string | number): string {
+        return format(new Date(value), 'PPpp', { locale: dateLocale() });
+      },
       formatBackupLabel(backup: {
         name: string;
         mtime: number;
         size: number;
       }): string {
-        const date = new Date(backup.mtime).toLocaleString();
+        const date = this.formatDateTime(backup.mtime);
         const mb = (backup.size / (1024 * 1024)).toFixed(1);
         return `${date} (${mb} MB)`;
       },
@@ -1752,8 +1955,13 @@
           '02:00'
         ];
       },
-      close(): void {
-        if (this.exportInProgress || this.importInProgress) {
+      async close(): Promise<void> {
+        if (this.closePending) return;
+        if (
+          this.exportInProgress ||
+          this.importInProgress ||
+          this.vanillaImportInProgress
+        ) {
           const choice = remote.dialog.showMessageBoxSync(browserWindow, {
             type: 'warning',
             buttons: [
@@ -1767,7 +1975,14 @@
           });
           if (choice === 0) return;
         }
-        browserWindow.close();
+        this.closePending = true;
+        try {
+          await ImportExport.stopSyncSession(this);
+          this.closeApproved = true;
+          browserWindow.close();
+        } finally {
+          this.closePending = false;
+        }
       },
       toggleVanillaCharacters(): void {
         this.setVanillaCharacters(!this.allVanillaCharactersSelected);
@@ -1794,9 +2009,6 @@
           this.exportAnimationTimer = undefined;
         }
         this.exportAnimatedDots = '';
-      },
-      close(): void {
-        browserWindow.close();
       },
       getThemeClass() {
         try {
@@ -1887,6 +2099,17 @@
 
   .label-full {
     width: 100%;
+  }
+
+  .sync-qr {
+    width: 280px;
+    max-width: 100%;
+    image-rendering: pixelated;
+    border-radius: 0.5rem;
+    // The QR must stay scannable on dark themes, so it keeps its own quiet
+    // zone instead of blending into the page background.
+    background: #fff;
+    padding: 0.5rem;
   }
 
   .card-full {

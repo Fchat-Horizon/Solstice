@@ -1,3 +1,4 @@
+import { acquireDataSession } from '../data-session';
 /**
  * @license MPL-2.0
  * This Source Code Form is subject to the terms of the Mozilla Public
@@ -13,6 +14,7 @@ import * as remote from '@electron/remote';
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log';
+import l, { lp } from '../../../chat/localize';
 import archiver from 'archiver';
 import AdmZip from 'adm-zip';
 import {
@@ -316,8 +318,10 @@ export async function runExport(vm: ExporterVm): Promise<void> {
   vm.exportTotal = 0;
 
   let outputPath: string | undefined;
+  let release: (() => void) | undefined;
 
   try {
+    release = acquireDataSession();
     const saveResult = await remote.dialog.showSaveDialog({
       title: 'Save Solstice Export', // TODO: localize
       defaultPath: getExportDefaultPath(),
@@ -435,9 +439,13 @@ export async function runExport(vm: ExporterVm): Promise<void> {
       return;
     }
 
-    let summary = `Exported ${count} file(s) for ${selectedCharacters.length} character(s) to ${outputPath}`;
+    let summary = l('settings.export.summary', {
+      files: lp('settings.summary.files', count),
+      characters: lp('settings.summary.characters', selectedCharacters.length),
+      file: outputPath
+    });
     if (failedFiles.length > 0) {
-      summary += ` (${failedFiles.length} file(s) skipped due to errors)`;
+      summary += ` ${lp('settings.export.summarySkipped', failedFiles.length)}`;
     }
     vm.exportSummary = summary;
   } catch (error) {
@@ -451,6 +459,7 @@ export async function runExport(vm: ExporterVm): Promise<void> {
       } catch {}
     }
   } finally {
+    release?.();
     vm.exportInProgress = false;
     vm.exportProgress = undefined;
     vm.exportCount = undefined;

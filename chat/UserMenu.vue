@@ -67,7 +67,7 @@
       ></textarea>
     </modal>
     <modal
-      :action="l('user.channelTimeout.name', displayName || '')"
+      :action="l('user.channelTimeout.name', { character: displayName || '' })"
       ref="timeoutPrompt"
       @submit="channelTimeout"
       :buttonText="l('user.channelTimeout')"
@@ -76,7 +76,10 @@
       v-if="channel"
     >
       <label for="timeoutValue" class="form-label">{{
-        l('user.channelTimeout.prompt', displayName || '""', channel.name)
+        l('user.channelTimeout.prompt', {
+          character: displayName || '""',
+          channel: channel.name
+        })
       }}</label>
       <div class="input-group mb-3">
         <input
@@ -384,7 +387,10 @@
           this.displayName &&
           this.channel &&
           Dialog.confirmDialog(
-            l('user.channelBan.confirm', this.displayName, this.channel.name),
+            l('user.channelBan.confirm', {
+              character: this.displayName,
+              channel: this.channel.name
+            }),
             true
           )
         ) {

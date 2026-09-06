@@ -1,9 +1,10 @@
+import { acquireDataSession } from '../data-session';
 import * as remote from '@electron/remote';
 import os from 'os';
 import path from 'path';
 import { ipcRenderer } from 'electron';
 import log from 'electron-log';
-import l from '../../../chat/localize';
+import l, { lp } from '../../../chat/localize';
 import type { ExporterVm } from '../exporter-vm';
 import * as VanillaImporter from './vanilla-importer';
 
@@ -135,25 +136,19 @@ export function getSelectedVanillaCharacters(vm: ExporterVm): string[] {
 export async function runVanillaImport(vm: ExporterVm): Promise<void> {
   if (!vm.canRunVanillaImport) return;
 
-  try {
-    const connected: string[] = await ipcRenderer.invoke(
-      'get-connected-characters'
-    );
-    if (connected?.length > 0) return;
-  } catch {}
-
-  if (!vm.vanillaContext) {
-    await refreshVanillaContext(vm);
-    if (!vm.vanillaContext || !vm.vanillaImportAvailable) return;
-  }
-
   Object.assign(vm, {
     vanillaImportInProgress: true,
     vanillaImportSummary: undefined,
     vanillaImportError: undefined
   });
 
+  let release: (() => void) | undefined;
   try {
+    release = acquireDataSession();
+    if (!vm.vanillaContext) {
+      await refreshVanillaContext(vm);
+      if (!vm.vanillaContext || !vm.vanillaImportAvailable) return;
+    }
     const destDir = vm.settings.logDirectory;
     if (!destDir) throw new Error('No log directory configured');
 
@@ -190,14 +185,13 @@ export async function runVanillaImport(vm: ExporterVm): Promise<void> {
     vm.settings.hasImportedVanillaLogs = true;
     ipcRenderer.send('general-settings-update', vm.settings);
 
-    vm.vanillaImportSummary = l(
-      'settings.import.vanilla.summary',
-      summaries.size,
-      logs,
-      logsSkip,
-      settings,
-      settingsSkip
-    );
+    vm.vanillaImportSummary = l('settings.import.vanilla.summary', {
+      characters: lp('settings.summary.characters', summaries.size),
+      logsCopied: logs,
+      logsSkipped: logsSkip,
+      settingsCopied: settings,
+      settingsSkipped: settingsSkip
+    });
     vm.showVanillaAutoPrompt = false;
 
     const { refreshExportCharacters } =
@@ -208,6 +202,7 @@ export async function runVanillaImport(vm: ExporterVm): Promise<void> {
     const reason = error instanceof Error ? error.message : String(error);
     vm.vanillaImportError = `${l('settings.import.vanilla.errorGeneric')}: ${reason}`;
   } finally {
+    release?.();
     vm.vanillaImportInProgress = false;
   }
 }

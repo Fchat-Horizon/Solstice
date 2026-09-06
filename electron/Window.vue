@@ -15,11 +15,7 @@
       class="border-bottom"
       id="window-tabs"
     >
-      <h4
-        style="padding: 2px 0"
-        class="d-md-block d-none"
-        v-if="!hideWindowControls"
-      >
+      <h4 class="window-title" v-if="!hideWindowControls">
         {{ l(windowTitleKey) }}
       </h4>
       <div
@@ -39,7 +35,9 @@
       >
         <div
           v-if="updateDownloading"
-          :title="l('update.titlebar.downloading', updateDownloadPercent)"
+          :title="
+            l('update.titlebar.downloading', { percent: updateDownloadPercent })
+          "
           :style="{ '--progress-percent': updateDownloadPercent + '%' }"
           class="btn-update-progress"
         >
@@ -50,11 +48,11 @@
         </div>
         <div
           v-else-if="updateDownloaded"
-          class="btn btn-success btn-update-done"
+          class="btn btn-outline-success btn-update-done"
           @click="installUpdate"
           :title="l('update.titlebar.ready')"
         >
-          <i class="fas fa-arrows-rotate fa-fade"></i>
+          <i class="fas fa-arrows-rotate"></i>
         </div>
         <div v-else class="btn btn-outline-success" @click="openUpdatePage">
           <i class="fa fa-arrow-down"></i>
@@ -406,7 +404,7 @@
         (_e: Electron.IpcRendererEvent, id: number, name: string) => {
           const tab = this.tabMap[id];
           tab.user = name;
-          tab.title = l('title.connected', name);
+          tab.title = l('title.connected', { character: name });
           this.refreshWindowTitle();
           const menu = this.createTrayMenu(tab);
           menu.unshift(
@@ -855,6 +853,23 @@
 </script>
 
 <style lang="scss">
+  .window-title {
+    width: 0;
+    max-width: 0;
+    overflow: hidden;
+    padding: 2px 0;
+    margin: 0;
+    white-space: nowrap;
+    visibility: hidden;
+  }
+
+  @media (min-width: 768px) {
+    .window-title {
+      width: auto;
+      max-width: none;
+      visibility: visible;
+    }
+  }
   #window-tabs {
     user-select: none;
 
@@ -954,16 +969,18 @@
   }
 
   #window-tabs .btn-update-done {
-    animation: pulse-success 1.5s ease-in-out infinite;
+    animation: pulse-success 1.5s ease-in-out 5;
   }
 
   @keyframes pulse-success {
     0%,
     100% {
-      opacity: 1;
+      background-color: rgba(var(--bs-success-rgb), 0);
+      color: var(--bs-success);
     }
     50% {
-      opacity: 0.6;
+      background-color: rgba(var(--bs-success-rgb), 1);
+      color: var(--bs-light);
     }
   }
 

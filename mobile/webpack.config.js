@@ -145,6 +145,9 @@ const config = {
       archiver: path.join(__dirname, 'shims/archiver.js'),
       [path.resolve(__dirname, '../electron/filesystem')]: path.join(__dirname, 'shims/electron-filesystem.js'),
       [path.resolve(__dirname, '../learn/store/worker')]: path.join(__dirname, 'shims/worker-store.js'),
+      // Desktop Device Sync server (worker_threads/http). Mobile syncs as a client
+      // via mobile/sync/; the desktop server must not be bundled into the WebView.
+      [path.resolve(__dirname, '../electron/services/sync/sync-ui')]: path.join(__dirname, 'shims/sync-ui.js'),
     },
     fallback: {
       fs: path.join(__dirname, 'shims/fs.js'),
