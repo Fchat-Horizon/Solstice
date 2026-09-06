@@ -1,3 +1,4 @@
+import { acquireDataSession } from '../data-session';
 /**
  * @license MPL-2.0
  * This Source Code Form is subject to the terms of the Mozilla Public
@@ -14,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { ipcRenderer } from 'electron';
 import log from 'electron-log';
+import l, { lp } from '../../../chat/localize';
 import AdmZip from 'adm-zip';
 import type { IZipEntry } from 'adm-zip';
 import {
@@ -514,17 +516,6 @@ function checkDirectoryAccess(dir: string): string | undefined {
   return undefined;
 }
 
-async function checkConnectedCharacters(): Promise<boolean> {
-  try {
-    const connected: string[] = await ipcRenderer.invoke(
-      'get-connected-characters'
-    );
-    return connected?.length > 0;
-  } catch {
-    return false;
-  }
-}
-
 function importGeneralSettings(
   vm: ExporterVm,
   zip: AdmZip,
@@ -712,16 +703,23 @@ function finalizeImport(vm: ExporterVm, stats: ImportStats): void {
 
   let generalState: string;
   if (stats.generalImported) {
-    generalState = 'updated';
+    generalState = l('settings.import.zip.generalUpdated');
   } else if (stats.generalCandidate) {
-    generalState = 'skipped';
+    generalState = l('settings.import.zip.generalSkipped');
   } else {
-    generalState = 'not imported';
+    generalState = l('settings.import.zip.generalNotImported');
   }
 
-  let summary = `Restored data for ${stats.charactersTouched.size} character(s). Logs copied: ${stats.logsCopied} (skipped ${stats.logsSkipped}). Settings copied: ${stats.settingsCopied} (skipped ${stats.settingsSkipped}). General settings: ${generalState}.`;
+  let summary = l('settings.import.zip.summary', {
+    characters: lp('settings.summary.characters', stats.charactersTouched.size),
+    logsCopied: stats.logsCopied,
+    logsSkipped: stats.logsSkipped,
+    settingsCopied: stats.settingsCopied,
+    settingsSkipped: stats.settingsSkipped,
+    generalSettings: generalState
+  });
   if (stats.filesErrored > 0) {
-    summary += ` ${stats.filesErrored} file(s) failed to import.`;
+    summary += ` ${lp('settings.import.zip.summaryFailed', stats.filesErrored)}`;
   }
   vm.importSummary = summary;
 }
@@ -736,9 +734,6 @@ function finalizeImport(vm: ExporterVm, stats: ImportStats): void {
 export async function runZipImport(vm: ExporterVm): Promise<void> {
   if (!vm.canRunZipImport) return;
 
-  const hasConnected = await checkConnectedCharacters();
-  if (hasConnected) return;
-
   const zip = vm.importZipArchive as AdmZip;
   if (!zip) return;
 
@@ -746,7 +741,9 @@ export async function runZipImport(vm: ExporterVm): Promise<void> {
   vm.importSummary = undefined;
   vm.importError = undefined;
 
+  let release: (() => void) | undefined;
   try {
+    release = acquireDataSession();
     let dataDir: string;
     if (vm.importUseCustomLogLocation && vm.importCustomLogDirectory) {
       const accessError = checkDirectoryAccess(vm.importCustomLogDirectory);
@@ -793,6 +790,7 @@ export async function runZipImport(vm: ExporterVm): Promise<void> {
     const reason = error instanceof Error ? error.message : String(error);
     vm.importError = `Import failed: ${reason}`;
   } finally {
+    release?.();
     vm.importInProgress = false;
   }
 }

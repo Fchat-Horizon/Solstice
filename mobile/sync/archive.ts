@@ -11,9 +11,38 @@
  */
 
 import AdmZip from 'adm-zip';
-import {mergeMessages} from './logMessage.ts';
+import {isFilesystemArtifact, mergeMessages} from './logMessage.ts';
 import type {LogMessage} from './logMessage.ts';
+import {SYNC_MAX_BODY_BYTES, SYNC_MAX_UNCOMPRESSED_BYTES} from './payload.ts';
 import type {SyncStorage} from './storage.ts';
+
+/**
+ * Thrown when an archive exceeds one of the sync size caps (Horizon repo issue
+ * #931). `direction` says which bound: `incoming` for a received archive that
+ * declares more than `SYNC_MAX_UNCOMPRESSED_BYTES` uncompressed, `outgoing` for
+ * an archive we built that exceeds `SYNC_MAX_BODY_BYTES` compressed. Retrying the
+ * same logs never helps, so the client surfaces it as a non-retryable error.
+ */
+export class ArchiveTooLargeError extends Error {
+    readonly direction: 'incoming' | 'outgoing';
+    constructor(direction: 'incoming' | 'outgoing') {
+        super(`sync archive too large (${direction})`);
+        this.name = 'ArchiveTooLargeError';
+        this.direction = direction;
+    }
+}
+
+/**
+ * Total declared uncompressed size of every entry in a sync zip. AdmZip
+ * allocates each entry's decompressed buffer from this header value, so the sum
+ * bounds the memory `mergeLogs` will allocate. Read from the central directory,
+ * so it is available before any entry is decompressed (mirrors Horizon).
+ */
+export function archiveUncompressedBytes(zip: AdmZip): number {
+    let total = 0;
+    for(const entry of zip.getEntries()) total += entry.header.size;
+    return total;
+}
 
 /**
  * Result of merging an archive into the local store. Field names match the sync
@@ -89,6 +118,10 @@ function displayNames(entries: AdmZip.IZipEntry[]): {[character: string]: {[key:
 export async function mergeLogs(zipData: Uint8Array, store: SyncStorage): Promise<MergeStats> {
     const zip = new AdmZip(Buffer.from(zipData));
     const entries = zip.getEntries();
+    // A compressed zip can inflate far past the encrypted body cap. Reject before
+    // decompressing anything (displayNames below reads entry data), using the
+    // central-directory sizes AdmZip would allocate from.
+    if(archiveUncompressedBytes(zip) > SYNC_MAX_UNCOMPRESSED_BYTES) throw new ArchiveTooLargeError('incoming');
     const names = displayNames(entries);
     const stats: MergeStats = {
         conversationsCreated: 0, conversationsUpdated: 0, messagesAdded: 0, charactersTouched: 0
@@ -107,6 +140,9 @@ export async function mergeLogs(zipData: Uint8Array, store: SyncStorage): Promis
         const key = rawKey.toLowerCase();
         if(!isSafeSegment(character) || !isSafeSegment(key) || key.endsWith('.idx')) continue;
         if(character === 'settings' || character === 'eicons') continue;
+        // A peer that did not screen its log dir can ship Thumbs.db/desktop.ini as a
+        // `.json` entry; never materialize filesystem litter as a conversation.
+        if(isFilesystemArtifact(key)) continue;
 
         let parsed: unknown;
         try {
@@ -160,7 +196,7 @@ function manifest(characters: string[], expectedFiles: number): ExportManifest {
  * device sync uploads it as an HTTP body). An empty store is not an error: a
  * fresh device legitimately sends a manifest-only archive.
  */
-export async function buildSyncArchive(store: SyncStorage): Promise<Buffer> {
+export async function buildSyncArchive(store: SyncStorage, maxBodyBytes = SYNC_MAX_BODY_BYTES): Promise<Buffer> {
     const characters = await store.getCharacters();
     const entries: Array<{name: string, data: Buffer}> = [];
     const included: string[] = [];
@@ -194,5 +230,8 @@ export async function buildSyncArchive(store: SyncStorage): Promise<Buffer> {
     const zip = new AdmZip();
     zip.addFile('manifest.json', Buffer.from(JSON.stringify(manifest(included, entries.length), null, 2), 'utf8'));
     for(const entry of entries) zip.addFile(entry.name, entry.data);
-    return zip.toBuffer();
+    const buffer = zip.toBuffer();
+    // Bound the outgoing upload to the same compressed body cap Horizon enforces.
+    if(buffer.length > maxBodyBytes) throw new ArchiveTooLargeError('outgoing');
+    return buffer;
 }

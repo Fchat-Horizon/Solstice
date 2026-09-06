@@ -1,6 +1,6 @@
 {
   "name": "fchat-solstice",
-  "version": "2026.6.4",
+  "version": "2026.9.0",
   "author": "The F-List Team, Horizon Contributors, and Solstice Contributors",
   "description": "A fork of F-Chat Horizon for Android and iOS.",
   "private": true,
@@ -20,6 +20,7 @@
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^24.12.0",
     "@types/node-fetch": "^2.6.13",
+    "@types/qrcode": "^1.5.6",
     "@types/qs": "^6.15.0",
     "@types/request-promise": "^4.1.51",
     "@types/sortablejs": "^1.15.9",
@@ -33,7 +34,7 @@
     "css-loader": "^5.2.7",
     "css-minimizer-webpack-plugin": "^7.0.0",
     "date-fns": "2.30.0",
-    "electron": "40.10.0",
+    "electron": "42.4.1",
     "electron-builder": "^26.8.1",
     "electron-log": "^4.4.8",
     "electron-settings": "~4.0.4",
@@ -67,15 +68,16 @@
     "webpack": "^5.99.9"
   },
   "dependencies": {
-    "@ghostery/adblocker": "^2.18.1",
-    "@ghostery/adblocker-content": "^2.18.1",
-    "@ghostery/adblocker-electron": "^2.18.1",
-    "@ghostery/adblocker-electron-preload": "^2.18.1",
-    "@ghostery/adblocker-extended-selectors": "^2.18.1",
+    "@ghostery/adblocker": "^2.18.2",
+    "@ghostery/adblocker-content": "^2.18.2",
+    "@ghostery/adblocker-electron": "^2.18.2",
+    "@ghostery/adblocker-electron-preload": "^2.18.2",
+    "@ghostery/adblocker-extended-selectors": "^2.18.2",
     "adm-zip": "^0.5.17",
     "archiver": "^7.0.1",
     "jsqr": "^1.4.0",
     "node-fetch": "^2.7.0",
+    "qrcode": "^1.5.4",
     "vuedraggable": "^2.24.3"
   },
   "optionalDependencies": {
@@ -97,31 +99,7 @@
     "test": "node mobile/sync/run-tests.mjs",
     "prepare": "husky"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@fortawesome/fontawesome-free",
-      "@parcel/watcher",
-      "core-js",
-      "electron",
-      "esbuild",
-      "fs-xattr",
-      "lzma-native",
-      "macos-alias",
-      "utf-8-validate"
-    ],
-    "overrides": {
-      "vue-class-component": "6.3.2",
-      "vue-loader": "15.11.1",
-      "@types/bluebird": "3.5.32",
-      "@types/har-format": "1.2.10",
-      "@types/node": "^24.0.0",
-      "pbkdf2": "3.1.3",
-      "babel-core": "7.0.0-bridge.0",
-      "babel-traverse": "7.25.9",
-      "consolidate": "0.16.0"
-    }
-  },
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@11.7.0",
   "lint-staged": {
     "*": "prettier --write --ignore-unknown"
   }

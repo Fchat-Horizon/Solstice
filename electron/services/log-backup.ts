@@ -24,6 +24,9 @@
 
 import fs from 'fs';
 import path from 'path';
+// TextDecoder is a WHATWG global in both Node 18+ and the browser/WebView, so we use
+// the global instead of importing it from 'util'. The mobile bundle's util polyfill
+// does not expose TextDecoder, and importing it there throws at module load.
 
 /** One message inside a JSON log file. Times are seconds since epoch. */
 export interface JsonLogMessage {
@@ -62,18 +65,33 @@ export function isFilesystemArtifact(fileName: string): boolean {
 }
 
 const dayMs = 86400000;
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+
+function decodeJsonText(raw: Buffer | string): string {
+  return typeof raw === 'string' ? raw : utf8Decoder.decode(raw);
+}
 
 function localDay(timeSeconds: number): number {
   const date = new Date(timeSeconds * 1000);
   return Math.floor(date.getTime() / dayMs - date.getTimezoneOffset() / 1440);
 }
 
+export class DamagedLogError extends Error {
+  constructor() {
+    super('Damaged conversation log. Run Fix Logs before syncing again.');
+  }
+}
+
 /**
  * Validates trailing length markers the way fixLogs does and stops at the
  * first malformed record, so non-log files yield no messages instead of
- * garbage.
+ * garbage. Strict parsing rejects incomplete records and invalid UTF-8 so a
+ * merge cannot rewrite only the readable prefix of a damaged log.
  */
-export function binaryLogToJson(buffer: Buffer): JsonLogMessage[] {
+export function binaryLogToJson(
+  buffer: Buffer,
+  strict = false
+): JsonLogMessage[] {
   const messages: JsonLogMessage[] = [];
   let offset = 0;
   while (offset + 10 <= buffer.length) {
@@ -92,9 +110,20 @@ export function binaryLogToJson(buffer: Buffer): JsonLogMessage[] {
     if (next > buffer.length) break;
     if (buffer.readUInt16LE(next - 2) !== next - offset - 2) break;
     const text = buffer.toString('utf8', textStart, textStart + textLength);
+    if (
+      strict &&
+      (!Buffer.from(sender, 'utf8').equals(
+        buffer.subarray(offset + 6, offset + 6 + senderLength)
+      ) ||
+        !Buffer.from(text, 'utf8').equals(
+          buffer.subarray(textStart, textStart + textLength)
+        ))
+    )
+      throw new DamagedLogError();
     messages.push({ time, type, sender, text });
     offset = next;
   }
+  if (strict && offset !== buffer.length) throw new DamagedLogError();
   return messages;
 }
 
@@ -128,7 +157,7 @@ export function jsonLogToBinary(json: JsonLogMessage[]): Buffer {
 export function parseJsonLog(raw: Buffer | string): JsonLog | undefined {
   let data: unknown;
   try {
-    data = JSON.parse(typeof raw === 'string' ? raw : raw.toString('utf8'));
+    data = JSON.parse(decodeJsonText(raw));
   } catch {
     return undefined;
   }
@@ -169,7 +198,9 @@ export function buildLogIndexBuffer(
 
   const chunks: Buffer[] = [header];
   let offset = 0;
-  let lastDay = 0;
+  // Day zero is a valid u16 index key (and the live writer emits it for a
+  // newly created conversation), so start below the representable range.
+  let lastDay = -1;
   while (offset + 10 <= log.length) {
     const senderLength = log.readUInt8(offset + 5);
     const textStart = offset + 6 + senderLength + 2;
@@ -179,7 +210,7 @@ export function buildLogIndexBuffer(
     if (next > log.length) break;
     if (log.readUInt16LE(next - 2) !== next - offset - 2) break;
     const day = localDay(log.readUInt32LE(offset));
-    if (day > lastDay && day <= 0xffff) {
+    if (day >= 0 && day > lastDay && day <= 0xffff) {
       const entry = Buffer.allocUnsafe(7);
       entry.writeUInt16LE(day, 0);
       entry.writeUIntLE(offset, 2, 5);
@@ -197,7 +228,7 @@ export function parseConversationNames(
 ): Map<string, string> | undefined {
   let data: unknown;
   try {
-    data = JSON.parse(typeof raw === 'string' ? raw : raw.toString('utf8'));
+    data = JSON.parse(decodeJsonText(raw));
   } catch {
     return undefined;
   }
@@ -218,7 +249,7 @@ export function parseRecentChannelNames(
 ): Map<string, string> | undefined {
   let data: unknown;
   try {
-    data = JSON.parse(typeof raw === 'string' ? raw : raw.toString('utf8'));
+    data = JSON.parse(decodeJsonText(raw));
   } catch {
     return undefined;
   }

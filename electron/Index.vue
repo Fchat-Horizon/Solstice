@@ -320,7 +320,7 @@
   import * as qs from 'querystring';
   import Vue from 'vue';
   import Chat from '../chat/Chat.vue';
-  import { Settings } from '../chat/common';
+  import { characterImage, Settings } from '../chat/common';
   import core from '../chat/core';
   import l from '../chat/localize';
   import Logs from '../chat/Logs.vue';
@@ -521,6 +521,21 @@
         'auto-backup-status',
         this.autoBackupStatusListener
       );
+
+      // The shell window's tab avatar is otherwise only sent at profile load,
+      // so push the current (setting-gated) avatar whenever settings change.
+      EventBus.$on('configuration-update', () => {
+        const own = core.characters.ownCharacter;
+        if (!own) return;
+        const parent =
+          remote.getCurrentWindow() || remote.BrowserWindow.getAllWindows()[0];
+        if (parent)
+          parent.webContents.send(
+            'update-avatar-url',
+            own.name,
+            characterImage(own.name)
+          );
+      });
 
       await this.startAndUpgradeCache();
 
@@ -744,6 +759,7 @@
             this.error = data.error;
             return;
           }
+          electron.ipcRenderer.send('login-succeeded', this.settings.account);
           if (this.saveLogin) {
             electron.ipcRenderer.send(
               'save-login',
@@ -760,11 +776,18 @@
           Socket.host = this.settings.host;
 
           core.connection.onEvent('connecting', async () => {
+            const connectResult = electron.ipcRenderer.sendSync(
+              'connect',
+              core.connection.character
+            );
+            // Data Manager operations hold the main-process lease. Block
+            // connections in every environment while files are being changed.
+            if (connectResult === 'data-operation-in-progress') {
+              core.notifications.alert(l('login.dataOperationInProgress'));
+              return core.connection.close();
+            }
             if (
-              !electron.ipcRenderer.sendSync(
-                'connect',
-                core.connection.character
-              ) &&
+              connectResult !== true &&
               process.env.NODE_ENV === 'production'
             ) {
               core.notifications.alert(l('login.alreadyLoggedIn'));
@@ -824,8 +847,16 @@
         }
       },
       fixLogs(): void {
-        if (!electron.ipcRenderer.sendSync('connect', this.fixCharacter))
-          return core.notifications.alert(l('login.alreadyLoggedIn'));
+        const connectResult = electron.ipcRenderer.sendSync(
+          'connect',
+          this.fixCharacter
+        );
+        if (connectResult !== true)
+          return core.notifications.alert(
+            connectResult === 'data-operation-in-progress'
+              ? l('login.dataOperationInProgress')
+              : l('login.alreadyLoggedIn')
+          );
         try {
           fixLogs(this.fixCharacter);
           core.notifications.alert(l('fixLogs.success'));
@@ -878,7 +909,6 @@
           'open-url-externally',
           `https://www.f-list.net/c/${this.profileName}`
         );
-        //await remote.shell.openExternal(`https://www.f-list.net/c/${this.profileName}`);
 
         // tslint:disable-next-line: no-any no-unsafe-any
         (this.$refs.profileViewer as any).hide();

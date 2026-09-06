@@ -184,28 +184,43 @@
               <hr class="w-100 my-3" />
 
               <p class="text-muted small mb-2">
-                {{ l('about.licensedUnder') }}
-                <a
-                  href="https://mozilla.org/MPL/2.0/"
-                  target="_blank"
-                  rel="noopener"
-                  >Mozilla Public License 2.0</a
-                >
+                <localized-text k="about.license">
+                  <template #license>
+                    <a
+                      href="https://mozilla.org/MPL/2.0/"
+                      target="_blank"
+                      rel="noopener"
+                      >Mozilla Public License 2.0</a
+                    >
+                  </template>
+                </localized-text>
               </p>
 
               <p class="text-muted mb-0">
-                {{ madeWithParts[0] }}<span class="heart">❤</span
-                >{{ madeWithParts[1] }}
-                <a href="https://github.com/CodingWithAnxiety" target="_blank"
-                  >CodingWithAnxiety</a
-                >,
-                <a href="https://github.com/FatCatClient" target="_blank"
-                  >FatCatClient</a
-                >, and
-                <a href="https://github.com/kawinski" target="_blank"
-                  >kawinski</a
-                >. <br />
-                Thank you for using Solstice!
+                <localized-text k="about.madeBy">
+                  <template #heart>
+                    <span class="heart">❤</span>
+                  </template>
+                  <template #c1>
+                    <a
+                      href="https://github.com/CodingWithAnxiety"
+                      target="_blank"
+                      >CodingWithAnxiety</a
+                    >
+                  </template>
+                  <template #c2>
+                    <a href="https://github.com/FatCatClient" target="_blank"
+                      >FatCatClient</a
+                    >
+                  </template>
+                  <template #c3>
+                    <a href="https://github.com/kawinski" target="_blank"
+                      >kawinski</a
+                    >
+                  </template>
+                </localized-text>
+                <br />
+                {{ l('about.thankYou') }}
               </p>
             </div>
 
@@ -227,9 +242,10 @@
 
 <script lang="ts">
   import * as remote from '@electron/remote';
-  import { clipboard, shell } from 'electron';
+  import { clipboard, ipcRenderer, shell } from 'electron';
   import Vue from 'vue';
   import l, { setLanguage } from '../chat/localize';
+  import LocalizedText from '../components/localized_text';
   import { GeneralSettings, defaultHost } from './common';
   import os from 'os';
   import fs from 'fs';
@@ -349,6 +365,7 @@
   }
 
   export default Vue.extend({
+    components: { 'localized-text': LocalizedText },
     data() {
       return {
         settings: undefined as any as GeneralSettings,
@@ -412,12 +429,6 @@
           maskImage: `url(${this.aboutIconSrc})`,
           WebkitMaskImage: `url(${this.aboutIconSrc})`
         };
-      },
-      // The {0} placeholder is the animated heart, kept as markup; split the
-      // localized string around it so translators still get a whole phrase.
-      madeWithParts(): string[] {
-        const parts = l('about.madeWith').split('{0}');
-        return [parts[0] || '', parts[1] || ''];
       }
     },
     async mounted(): Promise<void> {
@@ -494,7 +505,7 @@
           url = `${base}?template=bug.yml`;
         }
         try {
-          void shell.openExternal(url);
+          ipcRenderer.send('open-url-externally', url);
         } catch (e) {
           console.warn('Failed to open issue page', e);
         }

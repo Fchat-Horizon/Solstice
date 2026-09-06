@@ -7,7 +7,7 @@
  * `MemorySyncStorage` instead, so this file is never loaded under `node --test`.
  */
 
-import {buildLogIndex, parseBinaryLog, readIndexName, serializeMessages} from './logMessage.ts';
+import {buildLogIndex, isFilesystemArtifact, parseBinaryLog, readIndexName, serializeMessages} from './logMessage.ts';
 import type {LogMessage} from './logMessage.ts';
 import type {SyncStorage} from './storage.ts';
 
@@ -57,7 +57,7 @@ export class NativeSyncStorage implements SyncStorage {
         }
         const index: {[key: string]: {name: string}} = {};
         for(const file of files) {
-            if(file.endsWith('.idx') || file.endsWith('.syncmerge')) continue;
+            if(file.endsWith('.idx') || file.endsWith('.syncmerge') || isFilesystemArtifact(file)) continue;
             const idx = await readFileBytes(`${character}/logs/${file}.idx`);
             index[file] = {name: (idx !== undefined && readIndexName(idx)) || file};
         }

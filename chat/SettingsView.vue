@@ -328,7 +328,7 @@
 
       <div class="mb-3 p-2">
         <label class="control-label" for="fontSize">{{
-          l('settings.experimental', l('settings.fontSize'))
+          l('settings.experimental', { name: l('settings.fontSize') })
         }}</label>
         <input
           id="fontSize"
@@ -405,7 +405,7 @@
 
       <div class="mb-3 p-2">
         <label class="control-label" for="chatLayoutMode">{{
-          l('settings.experimental', l('settings.chatLayoutMode'))
+          l('settings.experimental', { name: l('settings.chatLayoutMode') })
         }}</label>
         <select
           id="chatLayoutMode"
@@ -1370,7 +1370,7 @@
         this.horizonShowDuplicateStatusNotifications =
           settings.horizonShowDuplicateStatusNotifications;
         this.horizonHighlightUsers = settings.horizonHighlightUsers.join(',');
-        this.risingFilter = settings.risingFilter;
+        this.risingFilter = JSON.parse(JSON.stringify(settings.risingFilter));
 
         if (!this.isMobilePlatform) {
           this.risingAvailableThemes = fs
@@ -1388,11 +1388,10 @@
       async doImport(): Promise<void> {
         if (
           !confirm(
-            l(
-              'settings.import.confirm',
-              this.importCharacter,
-              core.connection.character
-            )
+            l('settings.import.confirm', {
+              source: this.importCharacter,
+              target: core.connection.character
+            })
           )
         )
           return;
@@ -1576,6 +1575,9 @@
             );
           }
         });
+
+        // if a sender's filtered status is stale (not in memory), rematch them
+        void core.cache.rematchStaleAdsInConversations();
       },
       getAsNumber(input: any): number | null {
         if (_.isNil(input) || input === '') {
