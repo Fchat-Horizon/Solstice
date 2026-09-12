@@ -1,17 +1,17 @@
 import UIKit
 
-// Classic (non-scene) app lifecycle — there is a single full-screen WebView, so a
-// SceneDelegate would add no value. Mirrors the single-Activity Android host.
+// Scene-based life cycle (required by the iOS 26 / Xcode 27 SDK). AppDelegate now only handles
+// process-level launch; the single window is created by SceneDelegate.
 @UIApplicationMain
 final class AppDelegate: UIResponder, UIApplicationDelegate {
-    var window: UIWindow?
-
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = WebViewController()
-        window.makeKeyAndVisible()
-        self.window = window
         return true
+    }
+
+    func application(_ application: UIApplication,
+                     configurationForConnecting connectingSceneSession: UISceneSession,
+                     options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
     }
 }
