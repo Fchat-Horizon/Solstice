@@ -19,7 +19,10 @@ name: Solstice
 options:
   bundleIdPrefix: net.flist
   deploymentTarget:
-    iOS: "14.0"
+    # iOS 15 minimum: the Xcode 27 / iOS 26 SDK drops iOS 14 as a valid deployment target, so
+    # the app will not build against it until the floor is raised. 15 still builds on the older
+    # Xcode on the current CI runner too.
+    iOS: "15.0"
   createIntermediateGroups: true
   generateEmptyDirectories: true
 
