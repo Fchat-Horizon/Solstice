@@ -22,6 +22,27 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Scene-based life cycle, required by the iOS 26 / Xcode 27 SDK (apps built against it fail to
+	     launch otherwise). Single scene (UIApplicationSupportsMultipleScenes false) keeps the app-level
+	     background/foreground notification semantics identical to the old AppDelegate window. The
+	     UISceneConfigurationName must match the name AppDelegate passes to UISceneConfiguration. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 	<!-- Keep-alive: NativeBackground loops an inaudible audio stream while connected to keep the
 	     app process alive in the background, so the native WebSocket (NativeSocket) keeps answering
 	     F-List PINs. Requires the `audio` mode. Under LiveContainer the host must honor background
