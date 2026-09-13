@@ -46,6 +46,7 @@ import Socket from '../chat/WebSocket';
 import NativeSocketConnection from './NativeSocketConnection';
 import Connection from '../fchat/connection';
 import {appVersion, GeneralSettings, Logs, SettingsStore} from './filesystem';
+import * as externalStorage from './externalStorage';
 import Index from './Index.vue';
 import Notifications from './notifications';
 import {sendNotifyConfig, clearConversationNotification} from './notifyConfig';
@@ -320,6 +321,9 @@ const soundThemeContext = (require as any).context('../chat/sound-themes', true,
 (window as any).__availableSoundThemes = soundThemeContext.keys() //tslint:disable-line:no-any
     .map((k: string) => k.replace(/^\.\//, '').replace(/\/sound\.json$/, ''))
     .sort();
+
+// The external data folder option in Settings runs its flows (disclaimer, picker, copy) from here.
+(window as any).__externalStorage = externalStorage; //tslint:disable-line:no-any
 
 // On iOS the WebSocket runs natively (NativeSocket.swift) so it survives backgrounding; bridge.js
 // defines window.NativeSocket there. Android keeps the connection alive via its foreground service,

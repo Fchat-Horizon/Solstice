@@ -4,6 +4,7 @@ import {Message as MessageImpl} from '../chat/common';
 import core from '../chat/core';
 import {Conversation, Logs as Logging, Settings} from '../chat/interfaces';
 import l from '../chat/localize';
+import {getStatus as getExternalStatus} from './externalStorage';
 
 declare global {
     const NativeFile: {
@@ -59,16 +60,53 @@ export class Logs implements Logging {
     private loadedIndex?: Index;
     private loadedCharacter?: string;
     attemptedFix = false;
+    private warnedExternalUnavailable = false;
 
     constructor() {
         core.connection.onEvent('connecting', async() => {
             this.attemptedFix = false;
+            await this.warnIfExternalUnavailable();
             try {
                 this.index = await NativeLogs.init(core.connection.character);
             } catch {
                 await this.fixLogs(core.connection.character);
             }
         });
+        // With an external data folder, another app may have synced new files in while Solstice was
+        // in the background, so pick them up on return.
+        document.addEventListener('visibilitychange', async() => {
+            if(document.visibilityState !== 'visible') return;
+            try {
+                if((await getExternalStatus()).enabled) await this.reloadIndex();
+            } catch {
+                // best-effort refresh
+            }
+        });
+    }
+
+    // Re-reads the current character's log index, e.g. after the data folder changed.
+    async reloadIndex(): Promise<void> {
+        this.loadedCharacter = undefined;
+        this.loadedIndex = undefined;
+        if(!core.connection.isOpen) return;
+        try {
+            this.index = await NativeLogs.init(core.connection.character);
+        } catch {
+            await this.fixLogs(core.connection.character);
+        }
+    }
+
+    private async warnIfExternalUnavailable(): Promise<void> {
+        if(this.warnedExternalUnavailable) return;
+        try {
+            const status = await getExternalStatus();
+            if(!status.enabled || status.available) return;
+            this.warnedExternalUnavailable = true;
+            alert('The external data folder can\'t be reached, so Solstice is using app storage for now. ' +
+                'Check the folder and its permission, or turn the option off in Settings.');
+        } catch {
+            // no native support: nothing to warn about
+        }
     }
 
     async logMessage(conversation: Conversation, message: Conversation.Message): Promise<void> {

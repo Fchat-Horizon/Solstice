@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools">
 
 	<uses-permission android:name="android.permission.INTERNET" />
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -7,8 +8,13 @@
 	<uses-permission android:name="android.permission.WAKE_LOCK" />
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+	<!-- External data folder (Settings > Chat, opt-in): Syncthing and similar apps put files owned by
+	     another app into the folder, which scoped storage can't read, so the option needs all-files
+	     access on Android 11+ and the legacy storage permission on 8-10. Only requested when enabled. -->
 	<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-		android:maxSdkVersion="28" />
+		android:maxSdkVersion="29" />
+	<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+		tools:ignore="ScopedStorage" />
 	<!-- Device Sync scans the QR code Horizon shows (getUserMedia in the WebView). -->
 	<uses-permission android:name="android.permission.CAMERA" />
 	<uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -24,6 +30,7 @@
 		android:roundIcon="@mipmap/ic_launcher"
 		android:supportsRtl="true"
 		android:usesCleartextTraffic="true"
+		android:requestLegacyExternalStorage="true"
 		android:theme="@android:style/Theme.Holo.NoActionBar">
 		<activity android:name=".MainActivity" android:launchMode="singleInstance"
 				  android:exported="true"

@@ -14,10 +14,13 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.DocumentsContract
+import android.provider.Settings
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.webkit.JsPromptResult
 import android.webkit.JsResult
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
@@ -124,6 +127,18 @@ class MainActivity : Activity() {
 				return true
 			}
 
+			// prompt() is used by the external data folder's typed disclaimer confirmation. Styled like the
+			// alert/confirm dialogs above instead of the WebView's default "The page at file://" dialog.
+			override fun onJsPrompt(view: WebView, url: String, message: String, defaultValue: String?, result: JsPromptResult): Boolean {
+				val input = EditText(this@MainActivity)
+				input.setText(defaultValue ?: "")
+				var ok = false
+				AlertDialog.Builder(this@MainActivity).setTitle(R.string.app_name).setMessage(message).setView(input)
+						.setOnDismissListener({ if(ok) result.confirm(input.text.toString()) else result.cancel() })
+						.setPositiveButton(R.string.ok, { _, _ -> ok = true }).setNegativeButton(R.string.cancel, null).show()
+				return true
+			}
+
 			override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
 				filePathCallback?.onReceiveValue(null)
 				filePathCallback = callback
@@ -153,7 +168,9 @@ class MainActivity : Activity() {
 				super.onPageFinished(view, url)
 				webView.evaluateJavascript("window.setupPlatform('android')", null)
 				webView.evaluateJavascript("(function(n){n.listFiles=function(p){return JSON.parse(n.listFilesN(p))};" +
-						"n.listDirectories=function(p){return JSON.parse(n.listDirectoriesN(p))}})(NativeFile)", null)
+						"n.listDirectories=function(p){return JSON.parse(n.listDirectoriesN(p))};" +
+						"n.getExternalStatus=function(){return JSON.parse(n.getExternalStatusN())};" +
+						"n.copyData=function(t,o){return JSON.parse(n.copyDataN(t,o))}})(NativeFile)", null)
 				webView.evaluateJavascript("(function(n){n.init=function(c){return JSON.parse(n.initN(c))};n.getBacklog=function(k){return JSON.parse(n.getBacklogN(k))};" +
 						"n.getLogs=function(c,k,d){return JSON.parse(n.getLogsN(c,k,d))};n.loadIndex=function(c){return JSON.parse(n.loadIndexN(c))};" +
 						"n.getCharacters=function(){return JSON.parse(n.getCharactersN())}})(NativeLogs)", null)
@@ -172,8 +189,67 @@ class MainActivity : Activity() {
 		}
 	}
 
+	// External data folder: get the storage grant first (all-files access on Android 11+, the legacy
+	// storage permission on 8-10), then show the system folder picker. Called on the UI thread by
+	// File.kt; the outcome goes back to JS through deliverFolderResult.
+	fun pickExternalFolder() {
+		if(DataRoot.hasAccess(this)) return launchFolderTree()
+		if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+			try {
+				startActivityForResult(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+					Uri.parse("package:$packageName")), ALL_FILES_ACCESS_REQUEST)
+			} catch(e: Exception) {
+				// Some OEM builds lack the per-app screen; fall back to the global list.
+				startActivityForResult(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION), ALL_FILES_ACCESS_REQUEST)
+			}
+		} else {
+			requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), STORAGE_PERMISSION_REQUEST)
+		}
+	}
+
+	private fun launchFolderTree() {
+		try {
+			startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), FOLDER_TREE_REQUEST)
+		} catch(e: Exception) {
+			deliverFolderResult(JSONObject().put("error", "No folder picker is available on this device."))
+		}
+	}
+
+	// The tree picker returns a content URI, but the log code needs a real path. Only the external
+	// storage provider (shared internal storage and SD cards) maps to one.
+	private fun treeUriToPath(uri: Uri): java.io.File? {
+		if(uri.authority != "com.android.externalstorage.documents") return null
+		val parts = DocumentsContract.getTreeDocumentId(uri).split(":", limit = 2)
+		val rel = parts.getOrElse(1) { "" }
+		val base = when(parts[0]) {
+			"primary" -> Environment.getExternalStorageDirectory()
+			"home" -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+			else -> java.io.File("/storage/${parts[0]}")
+		}
+		return if(rel.isEmpty()) base else java.io.File(base, rel)
+	}
+
+	private fun isWritableDir(dir: java.io.File): Boolean = try {
+		dir.mkdirs()
+		val probe = java.io.File(dir, ".solstice-write-test")
+		probe.writeText("")
+		probe.delete()
+	} catch(e: Exception) {
+		false
+	}
+
+	private fun deliverFolderResult(result: JSONObject) {
+		webView.evaluateJavascript(
+			"window.__externalFolderResult && window.__externalFolderResult(${jsQuote(result.toString())})", null)
+	}
+
 	override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
 		super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+		if(requestCode == STORAGE_PERMISSION_REQUEST) {
+			DataRoot.invalidate()
+			if(grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) launchFolderTree()
+			else deliverFolderResult(JSONObject().put("error", "Solstice needs storage permission to use an external folder."))
+		}
 		if(requestCode == CAMERA_PERMISSION_REQUEST) {
 			val request = pendingCameraPermissionRequest
 			pendingCameraPermissionRequest = null
@@ -188,6 +264,9 @@ class MainActivity : Activity() {
 	companion object {
 		private const val FILE_CHOOSER_REQUEST = 1001
 		private const val CAMERA_PERMISSION_REQUEST = 1002
+		private const val STORAGE_PERMISSION_REQUEST = 1003
+		private const val ALL_FILES_ACCESS_REQUEST = 1004
+		private const val FOLDER_TREE_REQUEST = 1005
 	}
 
 	val keepAlive = object : Runnable {
@@ -286,11 +365,32 @@ class MainActivity : Activity() {
 				}
 			}
 		}
+		if(requestCode == ALL_FILES_ACCESS_REQUEST) {
+			// The settings screen always reports RESULT_CANCELED; check the grant itself.
+			DataRoot.invalidate()
+			if(DataRoot.hasAccess(this)) launchFolderTree()
+			else deliverFolderResult(JSONObject().put("error", "Solstice needs \"All files access\" to use an external folder."))
+		}
+		if(requestCode == FOLDER_TREE_REQUEST) {
+			val uri = data?.data
+			val dir = uri?.let { treeUriToPath(it) }
+			when {
+				resultCode != RESULT_OK || uri == null -> deliverFolderResult(JSONObject().put("cancelled", true))
+				dir == null -> deliverFolderResult(JSONObject().put("error", "Pick a folder on the device storage or an SD card."))
+				!isWritableDir(dir) -> deliverFolderResult(JSONObject().put("error", "Solstice can't write to that folder."))
+				else -> {
+					DataRoot.setExternalPath(this, dir.absolutePath)
+					deliverFolderResult(JSONObject().put("path", dir.absolutePath))
+				}
+			}
+		}
 		super.onActivityResult(requestCode, resultCode, data)
 	}
 
 	override fun onResume() {
 		super.onResume()
+		// The all-files access grant can change while the app is in the background.
+		DataRoot.invalidate()
 		webView.requestFocus()
 	}
 

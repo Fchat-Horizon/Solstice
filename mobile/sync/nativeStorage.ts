@@ -44,7 +44,8 @@ export class NativeSyncStorage implements SyncStorage {
             return [];
         }
         return dirs
-            .filter((d) => !d.startsWith('.') && !d.startsWith('!') && d !== 'settings' && d !== 'eicons')
+            .filter((d) => !d.startsWith('.') && !d.startsWith('!') && d !== 'settings' && d !== 'eicons'
+                && !d.includes('.sync-conflict-'))
             .sort((a, b) => a.localeCompare(b));
     }
 
@@ -57,7 +58,9 @@ export class NativeSyncStorage implements SyncStorage {
         }
         const index: {[key: string]: {name: string}} = {};
         for(const file of files) {
-            if(file.endsWith('.idx') || file.endsWith('.syncmerge') || isFilesystemArtifact(file)) continue;
+            // .sync-conflict-: Syncthing conflict copies in an external data folder.
+            if(file.endsWith('.idx') || file.endsWith('.syncmerge') || file.includes('.sync-conflict-')
+                || isFilesystemArtifact(file)) continue;
             const idx = await readFileBytes(`${character}/logs/${file}.idx`);
             index[file] = {name: (idx !== undefined && readIndexName(idx)) || file};
         }

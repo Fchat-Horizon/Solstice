@@ -30,7 +30,9 @@
   window.NativeFile = make('nativeFile', [
     'read', 'getSize', 'readBytes', 'delete', 'write', 'writeBytes',
     'listDirectories', 'listFiles', 'ensureDirectory',
-    'exportData', 'exportCrashLog', 'pickImportFile'
+    'exportData', 'exportCrashLog', 'pickImportFile',
+    // External data folder (DataRoot.swift): pickExternalFolder resolves once the picker closes.
+    'getExternalStatus', 'pickExternalFolder', 'setExternalEnabled', 'copyData'
   ]);
 
   window.NativeLogs = make('nativeLogs', [

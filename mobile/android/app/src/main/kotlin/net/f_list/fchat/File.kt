@@ -16,42 +16,74 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 class File(private val ctx: Context) {
+	// Per-character paths resolve against the external data folder when that option is on.
+	private fun resolve(name: String) = DataRoot.resolve(ctx, name)
+
+	// Listing the root means listing characters, which live in the data root.
+	private fun dir(name: String) = if(name.trim('/').isEmpty()) DataRoot.root(ctx) else resolve(name)
+
 	@JavascriptInterface
 	fun read(name: String): String? {
-		val file = File(ctx.filesDir, name)
+		val file = resolve(name)
 		if(!file.exists()) return null
 		return file.readText()
 	}
 
 	@JavascriptInterface
-	fun getSize(name: String) = File(ctx.filesDir, name).length()
+	fun getSize(name: String) = resolve(name).length()
 
 	@JavascriptInterface
 	fun write(name: String, data: String) {
-		FileOutputStream(File(ctx.filesDir, name)).use { it.write(data.toByteArray()) }
+		val file = resolve(name)
+		file.parentFile?.mkdirs()
+		FileOutputStream(file).use { it.write(data.toByteArray()) }
 	}
 
 	@JavascriptInterface
 	fun writeBytes(name: String, base64: String) {
 		val bytes = android.util.Base64.decode(base64, android.util.Base64.NO_WRAP)
-		FileOutputStream(File(ctx.filesDir, name)).use { it.write(bytes) }
+		val file = resolve(name)
+		file.parentFile?.mkdirs()
+		FileOutputStream(file).use { it.write(bytes) }
 	}
 
 	@JavascriptInterface
-	fun listFilesN(name: String) = JSONArray(File(ctx.filesDir, name).listFiles().filter { it.isFile }.map { it.name }).toString()
+	fun listFilesN(name: String) = JSONArray((dir(name).listFiles() ?: emptyArray()).filter { it.isFile }.map { it.name }).toString()
 
 	@JavascriptInterface
-	fun listDirectoriesN(name: String) = JSONArray(File(ctx.filesDir, name).listFiles().filter { it.isDirectory }.map { it.name }).toString()
+	fun listDirectoriesN(name: String) = JSONArray((dir(name).listFiles() ?: emptyArray()).filter { it.isDirectory && !it.name.startsWith(".") }.map { it.name }).toString()
 
 	@JavascriptInterface
 	fun ensureDirectory(name: String) {
-		File(ctx.filesDir, name).mkdirs()
+		resolve(name).mkdirs()
+	}
+
+	// External data folder (Settings > Chat). Status is {enabled, path, available}.
+	@JavascriptInterface
+	fun getExternalStatusN(): String = DataRoot.status(ctx).toString()
+
+	// Asks for storage access if needed, then shows the folder picker. The outcome arrives through
+	// window.__externalFolderResult(json): {path}, {error} or {cancelled: true}.
+	@JavascriptInterface
+	fun pickExternalFolder() {
+		val activity = ctx as? MainActivity ?: return
+		activity.runOnUiThread { activity.pickExternalFolder() }
+	}
+
+	@JavascriptInterface
+	fun setExternalEnabled(enabled: Boolean): Boolean = DataRoot.setEnabled(ctx, enabled)
+
+	@JavascriptInterface
+	fun copyDataN(toExternal: Boolean, overwrite: Boolean): String = try {
+		DataRoot.copyData(ctx, toExternal, overwrite).toString()
+	} catch(e: Exception) {
+		JSONObject().put("error", e.message ?: "Copy failed.").toString()
 	}
 
 	@JavascriptInterface
 	fun readBytes(name: String, offset: Long, length: Int): String {
 		val buf = ByteArray(length)
-		RandomAccessFile(File(ctx.filesDir, name), "r").use { raf ->
+		RandomAccessFile(resolve(name), "r").use { raf ->
 			raf.seek(offset)
 			val read = raf.read(buf, 0, length)
 			val actual = maxOf(0, read)
@@ -60,7 +92,7 @@ class File(private val ctx: Context) {
 	}
 
 	@JavascriptInterface
-	fun delete(name: String): Boolean = File(ctx.filesDir, name).delete()
+	fun delete(name: String): Boolean = resolve(name).delete()
 
 	// Extensions that are internal SQLite/journal files — never include in exports.
 	private val skippedExtensions = setOf(".db", ".db-wal", ".db-shm", ".db-journal")
@@ -86,7 +118,7 @@ class File(private val ctx: Context) {
 			// matches the structure Horizon expects. Within each character:
 			//   logs/        → characters/<name>/logs/<file>   (binary log files, verbatim)
 			//   <settings>   → characters/<name>/settings/<file>
-			val charDirs = ctx.filesDir.listFiles()
+			val charDirs = DataRoot.root(ctx).listFiles()
 				?.filter { it.isDirectory && !it.name.startsWith("!") && !it.name.startsWith(".") }
 				?: emptyList()
 
