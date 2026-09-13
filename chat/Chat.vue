@@ -606,15 +606,17 @@
         (this.$refs['logsDialog'] as InstanceType<typeof Logs>).show();
       },
 
+      // Mobile only. A document event, not EventBus: the connection 'closed' handler calls
+      // EventBus.clear(), which would drop mobile/Index.vue's listener after the first logout.
       exportData(): void {
-        EventBus.$emit('open-mobile-exporter', {});
+        document.dispatchEvent(new CustomEvent('open-mobile-exporter'));
       },
 
       // Mobile only: open the LAN log sync dialog (mobile/DeviceSyncDialog.vue). Shown on the
       // character-select screen, before a character is connected, so the merge never races the
       // live log writer.
       deviceSync(): void {
-        EventBus.$emit('open-mobile-device-sync', {});
+        document.dispatchEvent(new CustomEvent('open-mobile-device-sync'));
       },
 
       // Mobile only: hand the sanitized '!crashlog' (error type + code-location stack frames, no chat

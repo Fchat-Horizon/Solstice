@@ -34,7 +34,9 @@
                     this.container.appendChild(mount);
                     const vm: any = new ExporterVue({
                         el: mount,
-                        data: { settings: (window as any).__generalSettings },
+                        // Auto Backup is hidden on mobile (its scheduler only exists in the Electron
+                        // main process), so open on Export instead.
+                        data: { settings: (window as any).__generalSettings, selectedSection: 'export' },
                     });
 
                     // Populate character list from mobile storage. NativeFile.listDirectories

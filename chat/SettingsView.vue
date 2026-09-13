@@ -1615,7 +1615,8 @@
           (e.target as HTMLSelectElement).value = '0';
           this.selectedTab = '0';
           this.hide();
-          EventBus.$emit('open-mobile-app-settings');
+          // Document event: EventBus.clear() on disconnect would drop the listener.
+          document.dispatchEvent(new CustomEvent('open-mobile-app-settings'));
           return;
         }
         this.selectedTab = value;

@@ -28,9 +28,14 @@
             </a>
           </div>
           <div class="modal-body">
-            <div class="d-flex" style="flex: 1; min-height: 0">
+            <div
+              class="d-flex"
+              :class="{ 'data-manager-mobile': isMobilePlatform }"
+              style="flex: 1; min-height: 0"
+            >
               <div class="data-manager-sidebar">
                 <a
+                  v-if="!isMobilePlatform"
                   class="nav-link"
                   :class="{ active: selectedSection === 'auto-backup' }"
                   href="#"
@@ -58,6 +63,7 @@
                   >{{ l('settings.dataManager.section.import') }}
                 </a>
                 <a
+                  v-if="!isMobilePlatform"
                   class="nav-link"
                   :class="{ active: selectedSection === 'vanilla' }"
                   href="#"
@@ -79,6 +85,7 @@
               </div>
               <div class="data-manager-content hidden-scrollbar">
                 <div
+                  v-if="!isMobilePlatform"
                   v-show="selectedSection === 'auto-backup'"
                   class="settings-content"
                 >
@@ -1016,6 +1023,7 @@
                   </div>
                 </div>
                 <div
+                  v-if="!isMobilePlatform"
                   v-show="selectedSection === 'vanilla'"
                   class="settings-content"
                 >
@@ -1787,7 +1795,7 @@
         }
       );
 
-      if (this.settings.autoBackupEnabled) {
+      if (this.settings.autoBackupEnabled && !this.isMobilePlatform) {
         this.refreshAutoBackups();
       }
 
@@ -1897,7 +1905,8 @@
       },
       async refreshAutoBackups(): Promise<void> {
         try {
-          this.autoBackups = await ipcRenderer.invoke('list-auto-backups');
+          const list = await ipcRenderer.invoke('list-auto-backups');
+          this.autoBackups = Array.isArray(list) ? list : [];
         } catch {
           this.autoBackups = [];
         }
@@ -2095,6 +2104,26 @@
     flex: 1;
     overflow: auto;
     padding: 1rem 1.25rem;
+  }
+
+  // Mobile: a 200px sidebar eats over half a phone screen, so lay the sections
+  // out as a tab row above the content instead.
+  .data-manager-mobile {
+    flex-direction: column;
+
+    .data-manager-sidebar {
+      display: flex;
+      width: auto;
+      min-width: 0;
+      padding: 0;
+      border-right: 0;
+      border-bottom: 1px solid var(--bs-border-color);
+    }
+
+    .data-manager-sidebar .nav-link {
+      flex: 1;
+      text-align: center;
+    }
   }
 
   .label-full {

@@ -76,7 +76,6 @@
     import AppExporterDialog from './AppExporterDialog.vue';
     import DeviceSyncDialog from './DeviceSyncDialog.vue';
     import UpdateBanner from './UpdateBanner.vue';
-    import { EventBus } from '../chat/preview/event-bus';
     import { notifyConfigJSON, pushNotifyConfig } from './notifyConfig';
 
     declare global {
@@ -196,13 +195,15 @@
             (core.state as any).generalSettings = settings;
             (window as any).__generalSettings = settings;
             (window as any).__setGeneralSettings = setGeneralSettings;
-            EventBus.$on('open-mobile-app-settings', () => {
+            // Document events, not EventBus: Chat.vue calls EventBus.clear() on every disconnect,
+            // which would silently drop these app-lifetime listeners after the first logout.
+            document.addEventListener('open-mobile-app-settings', () => {
                 (<any>this.$refs['appSettingsDialog']).show();
             });
-            EventBus.$on('open-mobile-exporter', () => {
+            document.addEventListener('open-mobile-exporter', () => {
                 (<any>this.$refs['appExporterDialog']).show();
             });
-            EventBus.$on('open-mobile-device-sync', () => {
+            document.addEventListener('open-mobile-device-sync', () => {
                 (<any>this.$refs['deviceSyncDialog']).show();
             });
             // iOS: keep the native background-notify config (chat.ts pushes it on connect) current as
