@@ -748,7 +748,53 @@
                   </div>
                 </div>
 
-                <!-- Log directory is fixed by the native shell on mobile; the folder picker can't run in the WebView. -->
+                <!-- Mobile: optional external data folder (e.g. for Syncthing). The native shell owns the
+                     folder; the disclaimer/picker/copy flows live in mobile/externalStorage.ts. -->
+                <template v-if="isMobile">
+                  <h5>External data folder</h5>
+                  <div class="mb-3">
+                    <div class="form-check">
+                      <input
+                        type="checkbox"
+                        id="externalDataFolder"
+                        class="form-check-input"
+                        :checked="externalStorage.enabled"
+                        :disabled="externalStorageBusy"
+                        @change="toggleExternalStorage($event)"
+                      />
+                      <label class="form-check-label" for="externalDataFolder">
+                        Keep logs and character data in an external folder
+                      </label>
+                    </div>
+                    <div v-if="externalStorage.enabled" class="form-text">
+                      <span class="text-muted d-block">
+                        Folder: {{ externalStorage.path || 'unknown' }}
+                      </span>
+                      <span
+                        v-if="!externalStorage.available"
+                        class="text-danger d-block"
+                      >
+                        This folder can't be reached right now, so Solstice is
+                        using app storage.
+                      </span>
+                      <button
+                        class="btn btn-sm btn-outline-secondary mt-1"
+                        :disabled="externalStorageBusy"
+                        @click="changeExternalFolder()"
+                      >
+                        Change folder
+                      </button>
+                    </div>
+                    <div class="form-text text-muted">
+                      For power users who sync their logs with apps like
+                      Syncthing. Let the folder finish syncing before you log in
+                      on another device: if a log changes on both devices
+                      between syncs, the conflict is not merged. Keep your own
+                      backups.
+                    </div>
+                  </div>
+                </template>
+                <!-- Desktop log directory picker; mobile uses the external data folder option above. -->
                 <h5 v-if="!isMobile">{{ l('settings.behavior.chat') }}</h5>
                 <div class="mb-3" v-if="!isMobile">
                   <label class="control-label label-full" for="logDir">
@@ -1277,6 +1323,13 @@
         // Mobile (Android WebView) is detected the same way Chat.vue does it —
         // the native shell sets this dataset flag before the app mounts.
         isMobile: document.documentElement.dataset.mobilePlatform === 'true',
+        // Mobile external data folder state, read from the native shell (see mobile/externalStorage.ts).
+        externalStorage: {
+          enabled: false,
+          path: null as string | null,
+          available: false
+        },
+        externalStorageBusy: false,
         platformName: process.platform,
         showTitle: false as boolean,
         // Currently selected sound theme metadata and per-sound volumes for the UI
@@ -1322,6 +1375,7 @@
             .readdirSync(path.join(__dirname, 'themes'))
             .filter(x => x.substr(-4) === '.css')
             .map(x => x.slice(0, -4));
+      if (this.isMobile) this.refreshExternalStorage();
 
       remote.nativeTheme.on('updated', () => {
         this.osIsDark = remote.nativeTheme.shouldUseDarkColors;
@@ -1577,6 +1631,44 @@
 
       close(): void {
         browserWindow.close();
+      },
+
+      async refreshExternalStorage(): Promise<void> {
+        const api = (window as any).__externalStorage; //tslint:disable-line:no-any
+        if (!api) return;
+        try {
+          this.externalStorage = await api.getStatus();
+        } catch (e) {
+          console.warn('Failed to read the external data folder status', e);
+        }
+      },
+
+      async runExternalStorageFlow(flow: string): Promise<void> {
+        const api = (window as any).__externalStorage; //tslint:disable-line:no-any
+        if (!api || this.externalStorageBusy) return;
+        this.externalStorageBusy = true;
+        try {
+          await api[flow]();
+        } catch (e) {
+          alert(
+            `External data folder: ${e instanceof Error ? e.message : String(e)}`
+          );
+        } finally {
+          this.externalStorageBusy = false;
+          await this.refreshExternalStorage();
+        }
+      },
+
+      async toggleExternalStorage(e: Event): Promise<void> {
+        const target = e.target as HTMLInputElement;
+        const wanted = target.checked;
+        // Show the current state until the flow finishes; refreshing then applies the real outcome.
+        target.checked = !wanted;
+        await this.runExternalStorageFlow(wanted ? 'enable' : 'disable');
+      },
+
+      async changeExternalFolder(): Promise<void> {
+        await this.runExternalStorageFlow('changeFolder');
       },
 
       getThemeClass(): any {

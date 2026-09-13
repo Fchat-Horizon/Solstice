@@ -1,27 +1,18 @@
 import UIKit
 import WebKit
 
-// Mirrors File.kt. All paths are relative to the app's Application Support directory —
-// the iOS analogue of Android's private filesDir. The web layer (filesystem.ts) treats
-// "/" as the root and uses names like "!settings", "<character>/<key>" and
-// "<character>/logs/<key>".
+// Mirrors File.kt. Paths are resolved by DataRoot: root-level names ("!settings", ".import.tmp")
+// live in Application Support (the iOS analogue of Android's private filesDir), while
+// "<character>/<key>" and "<character>/logs/<key>" follow the external data folder setting.
 final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
     weak var host: WebViewController?
-    let rootURL: URL
+    private let dataRoot = DataRoot.shared
 
-    override init() {
-        let fm = FileManager.default
-        let dir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        self.rootURL = dir
-        super.init()
-    }
+    private func url(for name: String) -> URL { dataRoot.resolve(name) }
 
-    private func url(for name: String) -> URL {
-        if name.isEmpty || name == "/" { return rootURL }
-        var n = name
-        while n.hasPrefix("/") { n.removeFirst() }
-        return rootURL.appendingPathComponent(n)
+    // Listing the root means listing characters, which live in the data root.
+    private func directory(for name: String) -> URL {
+        name.trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty ? dataRoot.root : url(for: name)
     }
 
     func userContentController(_ userContentController: WKUserContentController,
@@ -47,9 +38,9 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
             writeData(Data(base64Encoded: call.string(1)) ?? Data(), to: url(for: call.string(0)))
             replyHandler(nil, nil)
         case "listFiles":
-            replyHandler(entries(at: url(for: call.string(0)), directories: false), nil)
+            replyHandler(entries(at: directory(for: call.string(0)), directories: false), nil)
         case "listDirectories":
-            replyHandler(entries(at: url(for: call.string(0)), directories: true), nil)
+            replyHandler(entries(at: directory(for: call.string(0)), directories: true), nil)
         case "ensureDirectory":
             try? fm.createDirectory(at: url(for: call.string(0)), withIntermediateDirectories: true)
             replyHandler(nil, nil)
@@ -60,6 +51,23 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
         case "pickImportFile":
             host?.presentImportPicker()
             replyHandler(nil, nil)
+        // External data folder (Settings > Chat); the flows live in mobile/externalStorage.ts.
+        case "getExternalStatus":
+            replyHandler(dataRoot.status(), nil)
+        case "pickExternalFolder":
+            guard let host = host else { return replyHandler(["error": "The folder picker is not available."], nil) }
+            host.presentFolderPicker { [dataRoot = self.dataRoot] url in
+                guard let url = url else { return replyHandler(["cancelled": true], nil) }
+                if let error = dataRoot.setFolder(url) {
+                    replyHandler(["error": error], nil)
+                } else {
+                    replyHandler(["path": url.lastPathComponent], nil)
+                }
+            }
+        case "setExternalEnabled":
+            replyHandler(dataRoot.setEnabled(call.bool(0)), nil)
+        case "copyData":
+            replyHandler(dataRoot.copyData(toExternal: call.bool(0), overwrite: call.bool(1)), nil)
         default:
             replyHandler(nil, "unknown method \(call.method)")
         }
@@ -102,8 +110,22 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
             at: url, includingPropertiesForKeys: [.isDirectoryKey]) else { return [] }
         return items.compactMap { item in
             let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+            if isDir && item.lastPathComponent.hasPrefix(".") { return nil } // e.g. Syncthing's .stfolder
             return isDir == directories ? item.lastPathComponent : nil
         }
+    }
+
+    // App storage as-is. With the external data folder on, the character folders come from the folder
+    // instead: app storage still holds an older fallback copy that must not end up in the backup.
+    private func exportEntries() -> [(url: URL, name: String)] {
+        let root = dataRoot.root
+        let internalFiles = ZipArchive.files(under: dataRoot.internalRoot)
+        if root.standardizedFileURL.path == dataRoot.internalRoot.standardizedFileURL.path { return internalFiles }
+        let topLevel = internalFiles.filter { !$0.name.contains("/") }
+        let external = ZipArchive.files(under: root).filter { entry in
+            !entry.name.split(separator: "/").contains { $0.hasPrefix(".") }
+        }
+        return topLevel + external
     }
 
     private func exportData() -> String {
@@ -114,7 +136,7 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
         let dest = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
         try? FileManager.default.removeItem(at: dest)
         do {
-            try ZipArchive.zip(directory: rootURL, to: dest)
+            try ZipArchive.zip(entries: exportEntries(), to: dest)
         } catch {
             return ""
         }

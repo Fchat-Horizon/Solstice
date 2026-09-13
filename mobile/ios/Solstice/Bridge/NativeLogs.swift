@@ -30,15 +30,24 @@ final class NativeLogs: NSObject, WKScriptMessageHandlerWithReply {
         }
     }
 
-    private let root: URL
+    // A fixed root (unit tests) or DataRoot, which follows the external data folder setting.
+    private let rootProvider: () -> URL
+    private let followsDataRoot: Bool
+    private var root: URL { rootProvider() }
     private var index: [String: IndexItem] = [:]
     private var loadedIndex: [String: IndexItem] = [:]
     private var baseDir: URL?
     private var character: String?
 
     init(root: URL? = nil) {
-        self.root = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        try? FileManager.default.createDirectory(at: self.root, withIntermediateDirectories: true)
+        if let root = root {
+            try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            rootProvider = { root }
+            followsDataRoot = false
+        } else {
+            rootProvider = { DataRoot.shared.root }
+            followsDataRoot = true
+        }
         super.init()
     }
 
@@ -85,7 +94,10 @@ final class NativeLogs: NSObject, WKScriptMessageHandlerWithReply {
     }
 
     func loadIndexPublic(_ character: String) -> [String: Any] {
-        loadedIndex = (character == self.character) ? index : loadIndex(character)
+        // In an external folder another app may have rewritten the files since they were indexed, so
+        // always re-read there; stale offsets would decode garbage.
+        let external = followsDataRoot && DataRoot.shared.isEnabled
+        loadedIndex = (character == self.character && !external) ? index : loadIndex(character)
         return indexJSON(loadedIndex)
     }
 
@@ -94,7 +106,8 @@ final class NativeLogs: NSObject, WKScriptMessageHandlerWithReply {
             at: root, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         return items.compactMap { item in
             let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-            return isDir ? item.lastPathComponent : nil
+            // Skip hidden folders such as Syncthing's .stfolder / .stversions.
+            return isDir && !item.lastPathComponent.hasPrefix(".") ? item.lastPathComponent : nil
         }
     }
 
@@ -238,7 +251,8 @@ final class NativeLogs: NSObject, WKScriptMessageHandlerWithReply {
         let dir = root.appendingPathComponent("\(character)/logs")
         var result: [String: IndexItem] = [:]
         let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-        for file in files where file.pathExtension == "idx" {
+        // Skip Syncthing conflict copies (`<key>.sync-conflict-<date>-<id>.idx`) in an external folder.
+        for file in files where file.pathExtension == "idx" && !file.lastPathComponent.contains(".sync-conflict-") {
             guard let data = try? Data(contentsOf: file), !data.isEmpty else { continue }
             let nameLength = Int(data[data.startIndex])
             guard data.count >= 1 + nameLength else { continue }

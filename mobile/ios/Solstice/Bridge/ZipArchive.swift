@@ -10,21 +10,33 @@ import Compression
 // Entries use DEFLATE (method 8) when that is smaller, otherwise STORED (method 0).
 enum ZipArchive {
     static func zip(directory: URL, to destination: URL) throws {
-        let fm = FileManager.default
+        try zip(entries: files(under: directory), to: destination)
+    }
+
+    // Regular files under `directory`, named by their path relative to it, in a stable order.
+    static func files(under directory: URL) -> [(url: URL, name: String)] {
+        let basePath = directory.standardizedFileURL.path
+        return regularFiles(under: directory, fm: FileManager.default)
+            .sorted { $0.path < $1.path }
+            .compactMap { fileURL -> (url: URL, name: String)? in
+                var rel = fileURL.standardizedFileURL.path
+                if rel.hasPrefix(basePath) { rel.removeFirst(basePath.count) }
+                while rel.hasPrefix("/") { rel.removeFirst() }
+                return rel.isEmpty ? nil : (url: fileURL, name: rel)
+            }
+    }
+
+    // Zips explicit (file, entry name) pairs, so an export can combine app storage with the external
+    // data folder.
+    static func zip(entries: [(url: URL, name: String)], to destination: URL) throws {
         var output = Data()
         var central = Data()
         var entryCount: UInt16 = 0
         let (dosTime, dosDate) = dosDateTime(Date())
 
-        let basePath = directory.standardizedFileURL.path
-        let files = regularFiles(under: directory, fm: fm).sorted { $0.path < $1.path }
-
-        for fileURL in files {
-            let fileData = (try? Data(contentsOf: fileURL)) ?? Data()
-            var rel = fileURL.standardizedFileURL.path
-            if rel.hasPrefix(basePath) { rel.removeFirst(basePath.count) }
-            while rel.hasPrefix("/") { rel.removeFirst() }
-            guard !rel.isEmpty, let nameData = rel.data(using: .utf8) else { continue }
+        for entry in entries {
+            let fileData = (try? Data(contentsOf: entry.url)) ?? Data()
+            guard let nameData = entry.name.data(using: .utf8) else { continue }
 
             let crc = crc32(fileData)
             var method: UInt16 = 0

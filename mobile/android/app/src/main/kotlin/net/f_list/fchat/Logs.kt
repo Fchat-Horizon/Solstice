@@ -26,7 +26,9 @@ class Logs(private val ctx: Context) {
 	private val buffer = ByteBuffer.allocateDirect(51000).order(ByteOrder.LITTLE_ENDIAN)
 
 	private fun loadIndex(character: String): MutableMap<String, IndexItem> {
-		val files = File(ctx.filesDir, "$character/logs").listFiles({ _, name -> name.endsWith(".idx") })
+		// Skip Syncthing conflict copies (`<key>.sync-conflict-<date>-<id>.idx`) in an external folder.
+		val files = File(DataRoot.root(ctx), "$character/logs")
+			.listFiles({ _, name -> name.endsWith(".idx") && !name.contains(".sync-conflict-") }) ?: emptyArray()
 		val index = HashMap<String, IndexItem>(files.size)
 		for(file in files) {
 			FileInputStream(file).use { stream ->
@@ -55,7 +57,7 @@ class Logs(private val ctx: Context) {
 
 	@JavascriptInterface
 	fun initN(character: String): String {
-		baseDir = File(ctx.filesDir, "$character/logs")
+		baseDir = File(DataRoot.root(ctx), "$character/logs")
 		baseDir.mkdirs()
 		this.character = character
 		index = loadIndex(character)
@@ -146,7 +148,7 @@ class Logs(private val ctx: Context) {
 		val dateKey = indexItem.index[date] ?: return "[]"
 		val json = JSONStringer()
 		json.array()
-		FileInputStream(File(ctx.filesDir, "$character/logs/$key")).use { stream ->
+		FileInputStream(File(DataRoot.root(ctx), "$character/logs/$key")).use { stream ->
 			val channel = stream.channel
 			val start = indexItem.offsets[dateKey]
 			val end = if(dateKey >= indexItem.offsets.size - 1) channel.size() else indexItem.offsets[dateKey + 1]
@@ -165,7 +167,9 @@ class Logs(private val ctx: Context) {
 
 	@JavascriptInterface
 	fun loadIndexN(character: String): String {
-		loadedIndex = if(character == this.character) this.index else this.loadIndex(character)
+		// In an external folder another app may have rewritten the files since they were indexed, so
+		// always re-read there; stale offsets would decode garbage.
+		loadedIndex = if(character == this.character && !DataRoot.isEnabled(ctx)) this.index else this.loadIndex(character)
 		val json = JSONStringer().`object`()
 		for(item in loadedIndex!!)
 			json.key(item.key).`object`().key("name").value(item.value.name).key("dates").value(JSONArray(item.value.index.keys)).endObject()
@@ -174,7 +178,7 @@ class Logs(private val ctx: Context) {
 
 	@JavascriptInterface
 	fun getCharactersN(): String {
-		return JSONArray(ctx.filesDir.listFiles().filter { it.isDirectory }.map { it.name }).toString()
+		return JSONArray((DataRoot.root(ctx).listFiles() ?: emptyArray()).filter { it.isDirectory && !it.name.startsWith(".") }.map { it.name }).toString()
 	}
 
 	@JavascriptInterface

@@ -21,6 +21,10 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
     // so WebKit's shove never actually paints.
     private var contentOffsetObservation: NSKeyValueObservation?
 
+    // The external-data-folder picker, told apart from the zip import picker in the shared delegate.
+    private weak var folderPicker: UIDocumentPickerViewController?
+    private var folderPickerCompletion: ((URL?) -> Void)?
+
     // Native bridges. Retained here for clarity even though WKUserContentController also
     // retains its message handlers.
     private let nativeFile = NativeFile()
@@ -251,7 +255,20 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         topPresenter().present(picker, animated: true)
     }
 
+    // External data folder (called by NativeFile). The picked folder is opened in place, so its
+    // security scope can be kept and bookmarked by DataRoot.
+    func presentFolderPicker(completion: @escaping (URL?) -> Void) {
+        folderPickerCompletion?(nil)
+        folderPickerCompletion = completion
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [UTType.folder])
+        picker.delegate = self
+        picker.allowsMultipleSelection = false
+        folderPicker = picker
+        topPresenter().present(picker, animated: true)
+    }
+
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        if controller === folderPicker { return finishFolderPick(urls.first) }
         guard let url = urls.first else { return deliverImport(nil, nil) }
         let accessed = url.startAccessingSecurityScopedResource()
         defer { if accessed { url.stopAccessingSecurityScopedResource() } }
@@ -259,7 +276,15 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
     }
 
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        if controller === folderPicker { return finishFolderPick(nil) }
         deliverImport(nil, nil)
+    }
+
+    private func finishFolderPick(_ url: URL?) {
+        let completion = folderPickerCompletion
+        folderPickerCompletion = nil
+        folderPicker = nil
+        completion?(url)
     }
 
     private func deliverImport(_ data: Data?, _ name: String?) {
