@@ -169,6 +169,33 @@ function readBatchInfo(entries: AdmZip.IZipEntry[]): SyncBatchInfo | undefined {
     return undefined;
 }
 
+/**
+ * A received archive, opened far enough to know where the transfer goes next but
+ * not yet merged. The split is what lets the client put the request for the next
+ * batch on the wire before merging this one: the envelope is a single tiny entry
+ * while the merge is the expensive half, so the desktop builds and sends the next
+ * batch during time this device was going to spend anyway.
+ */
+export interface OpenedSyncBatch {
+    readonly entries: AdmZip.IZipEntry[];
+    /** This archive's batch envelope, or undefined when it carries none. */
+    readonly info: SyncBatchInfo | undefined;
+}
+
+/**
+ * Read an archive's central directory, enforce the uncompressed cap and take its
+ * batch envelope, without decompressing any conversation.
+ */
+export function openSyncBatch(zipData: Uint8Array): OpenedSyncBatch {
+    const zip = new AdmZip(Buffer.from(zipData));
+    const entries = zip.getEntries();
+    // A compressed zip can inflate far past the encrypted body cap. Reject before
+    // decompressing anything (the merge below reads entry data), using the
+    // central-directory sizes AdmZip would allocate from.
+    if(archiveUncompressedBytes(zip) > SYNC_MAX_UNCOMPRESSED_BYTES) throw new ArchiveTooLargeError('incoming');
+    return {entries, info: readBatchInfo(entries)};
+}
+
 /** A conversation held open across batches, written once when a later batch moves past it. */
 interface PendingConversation {
     character: string;
@@ -209,16 +236,19 @@ export class SyncMerge {
 
     /**
      * Merge one archive, returning its batch envelope (undefined when it carries
-     * none, i.e. the peer sent the whole log set in one archive).
+     * none, i.e. the peer sent the whole log set in one archive). The client opens
+     * the archive itself so it can request the next batch first; this is the whole
+     * step, for callers with nothing to overlap.
      */
     async mergeBatch(zipData: Uint8Array): Promise<SyncBatchInfo | undefined> {
-        const zip = new AdmZip(Buffer.from(zipData));
-        const entries = zip.getEntries();
-        // A compressed zip can inflate far past the encrypted body cap. Reject before
-        // decompressing anything (displayNames below reads entry data), using the
-        // central-directory sizes AdmZip would allocate from.
-        if(archiveUncompressedBytes(zip) > SYNC_MAX_UNCOMPRESSED_BYTES) throw new ArchiveTooLargeError('incoming');
-        const batch = readBatchInfo(entries);
+        const opened = openSyncBatch(zipData);
+        await this.merge(opened);
+        return opened.info;
+    }
+
+    /** Merge an archive already opened by `openSyncBatch`. */
+    async merge(opened: OpenedSyncBatch): Promise<void> {
+        const entries = opened.entries;
         const names = displayNames(entries);
 
         for(const entry of entries) {
@@ -261,7 +291,6 @@ export class SyncMerge {
             pending.added += added.length;
             this.messagesAdded += added.length;
         }
-        return batch;
     }
 
     /** Flush the conversation still held open and return the session totals. */

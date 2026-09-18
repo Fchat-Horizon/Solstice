@@ -18,6 +18,7 @@ import type {LogMessage} from './logMessage.ts';
 import {MemorySyncStorage} from './memoryStorage.ts';
 import {MockSyncServer, withBatchEnvelope} from './mockServer.ts';
 import {NodeSyncTransport} from './nodeTransport.ts';
+import type {SyncResponse, SyncTransport} from './transport.ts';
 import {SyncError} from './payload.ts';
 import type {SyncSessionPayload} from './payload.ts';
 import {allBatches, archive, dumpStore, msg, wholeArchive} from './testArchive.ts';
@@ -582,6 +583,124 @@ test('zip: the fallback writer produces an archive the merge can read', async ()
 test('zip: utf8 encodes without going through the buffer polyfill', () => {
     const text = 'café \u{1F31F} "quoted"';
     assert.deepEqual(utf8(text), Buffer.from(text, 'utf8'));
+});
+
+// MARK: Overlapping the wire with the work
+
+/**
+ * Holds every transfer response open for a moment after it arrives, and records
+ * whether the store was touched during that window. With the loops pipelined the
+ * answer is yes: the request for the next batch is already on the wire while this
+ * device reads, merges or builds. Without it the two strictly alternate and the
+ * store is idle for as long as a request takes.
+ */
+class HoldingTransport implements SyncTransport {
+    readonly inner = new NodeSyncTransport();
+    readonly hold: 'GET' | 'POST';
+    outstanding = 0;
+    sawStoreWork = false;
+
+    constructor(hold: 'GET' | 'POST') { this.hold = hold; }
+
+    async request(
+        method: string, url: string, headers: {[name: string]: string},
+        body: Uint8Array | undefined, timeoutMs: number
+    ): Promise<SyncResponse> {
+        const held = method === this.hold && url.includes('/v1/logs');
+        if(held) this.outstanding++;
+        try {
+            const response = await this.inner.request(method, url, headers, body, timeoutMs);
+            if(held) await new Promise((resolve) => setTimeout(resolve, 25));
+            return response;
+        } finally {
+            if(held) this.outstanding--;
+        }
+    }
+}
+
+/**
+ * A store that reports its reads to a watching transport. Each one yields to the
+ * macrotask queue first: the in-memory store settles in microtasks, so without
+ * that it would finish a whole batch before a socket write even leaves, and the
+ * overlap under test would be invisible. Every real store is file-backed and does
+ * yield like this.
+ */
+class WatchedStore extends MemorySyncStorage {
+    private readonly watch: HoldingTransport;
+
+    constructor(watch: HoldingTransport) {
+        super();
+        this.watch = watch;
+    }
+
+    private async note(): Promise<void> {
+        await new Promise((resolve) => setImmediate(resolve));
+        if(this.watch.outstanding > 0) this.watch.sawStoreWork = true;
+    }
+
+    async readLog(character: string, key: string): ReturnType<MemorySyncStorage['readLog']> {
+        await this.note();
+        return super.readLog(character, key);
+    }
+
+    async messagesFrom(
+        character: string, key: string, byteOffset: number, maxJsonBytes: number, maxRecords: number
+    ): ReturnType<MemorySyncStorage['messagesFrom']> {
+        await this.note();
+        return super.messagesFrom(character, key, byteOffset, maxJsonBytes, maxRecords);
+    }
+}
+
+test('batch: the next download is requested before the current one is merged', async () => {
+    const desktop = new MemorySyncStorage();
+    await desktop.seed('Alice', 'bob', 'Bob', conversation(30));
+    await desktop.seed('Alice', 'carol', 'Carol', conversation(30, 'Carol'));
+    const batches = await allBatches(desktop, {budget: 900});
+    assert.ok(batches.length >= 3, `expected several batches, got ${batches.length}`);
+
+    const transport = new HoldingTransport('GET');
+    const store = new WatchedStore(transport);
+    const server = await MockSyncServer.start({account: 'Acc'});
+    server.serveBatches(batches);
+    try {
+        await runSync({
+            payload: payloadFor(server, 'Acc'), transport, store, device: DEVICE,
+            localAccount: 'Acc', sleep: async () => undefined
+        });
+    } finally {
+        await server.stop();
+    }
+
+    assert.ok(transport.sawStoreWork, 'the merge should run while the next batch is still in flight');
+    // Overlapping must not change what lands: the same batches merged serially.
+    const serial = new MemorySyncStorage();
+    await mergeAll(batches, serial);
+    assert.deepEqual(await dumpStore(store), await dumpStore(serial));
+});
+
+test('batch: the next upload is built while the previous one is in flight', async () => {
+    const transport = new HoldingTransport('POST');
+    const store = new WatchedStore(transport);
+    await store.seed('Alice', 'bob', 'Bob', conversation(30));
+    await store.seed('Alice', 'carol', 'Carol', conversation(30, 'Carol'));
+
+    const server = await MockSyncServer.start({account: 'Acc', logsToServe: await wholeArchive(new MemorySyncStorage())});
+    try {
+        await runSync({
+            payload: payloadFor(server, 'Acc'), transport, store, device: DEVICE,
+            localAccount: 'Acc', sleep: async () => undefined, sendOptions: {budget: 900}
+        });
+    } finally {
+        await server.stop();
+    }
+
+    assert.ok(server.uploads.length >= 3, `expected several uploads, got ${server.uploads.length}`);
+    assert.ok(transport.sawStoreWork, 'the next batch should be built while the previous post is in flight');
+    // And the whole store still arrives: every upload merged into a fresh store
+    // reproduces the source exactly.
+    const received = new MemorySyncStorage();
+    await mergeAll(server.uploads, received);
+    assert.deepEqual(await dumpStore(received), await dumpStore(store));
 });
 
 test('zip: base64 encodes without going through the buffer polyfill', () => {

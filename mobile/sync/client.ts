@@ -18,8 +18,12 @@
  * TypeScript port of Luna's `LogSyncClient`.
  */
 
-import {ArchiveTooLargeError, buildSyncBatch, samePosition, SyncMerge, SYNC_SEND_START} from './archive.ts';
-import type {MergeStats, SyncSendBatch, SyncSendOptions, SyncSendPosition} from './archive.ts';
+import {
+    ArchiveTooLargeError, buildSyncBatch, openSyncBatch, samePosition, SyncMerge, SYNC_SEND_START
+} from './archive.ts';
+import type {
+    MergeStats, OpenedSyncBatch, SyncSendBatch, SyncSendOptions, SyncSendPosition
+} from './archive.ts';
 import {decryptBody, encryptBody} from './crypto.ts';
 import {SYNC_CURSOR_START, SYNC_MAX_BATCHES, SyncError} from './payload.ts';
 import type {SyncBatchInfo, SyncErrorKind, SyncSessionPayload} from './payload.ts';
@@ -219,31 +223,68 @@ class SyncSession {
         let cursor: string | undefined = SYNC_CURSOR_START;
         const seen = new Set<string>([SYNC_CURSOR_START]);
         let peerBatches = false;
+        // The next batch is asked for before the current one is merged, so Horizon
+        // reads its logs and the archive crosses the wire while this device is busy
+        // merging. Still one request outstanding at a time, so Horizon's single
+        // transfer lock and the busy retry are unaffected; the cost is holding two
+        // batches rather than one.
+        let inFlight: Promise<Uint8Array> | undefined = undefined;
 
-        for(let index = 0; index < SYNC_MAX_BATCHES; index++) {
-            const requested = cursor;
-            this.emit('downloading', index);
-            const data = await this.withBusyRetry(() => this.getLogs(base, requested));
+        try {
+            for(let index = 0; index < SYNC_MAX_BATCHES; index++) {
+                const requested = cursor;
+                this.emit('downloading', index);
+                const pending = inFlight ?? this.withBusyRetry(() => this.getLogs(base, requested));
+                inFlight = undefined;
+                const data = await pending;
 
-            this.emit('merging', index);
-            let batch: SyncBatchInfo | undefined;
-            try {
-                batch = await merge.mergeBatch(data);
-            } catch(error) {
-                throw this.mergeFailure(error);
+                let opened: OpenedSyncBatch;
+                try {
+                    opened = openSyncBatch(data);
+                } catch(error) {
+                    throw this.mergeFailure(error);
+                }
+                const batch = opened.info;
+
+                // Where the transfer goes next comes from the envelope alone, so the
+                // request for it can be issued before the merge rather than after it.
+                let following: string | undefined = undefined;
+                if(batch === undefined) cursor = undefined;
+                else {
+                    peerBatches = true;
+                    if(batch.done || batch.cursor === undefined) cursor = undefined;
+                    // A cursor we have already requested means the desktop is handing us
+                    // the same batch forever; stop instead of looping until the session
+                    // expires.
+                    else if(seen.has(batch.cursor))
+                        throw fail({type: 'badResponse', detail: 'the log download repeated a batch'});
+                    else {
+                        seen.add(batch.cursor);
+                        cursor = batch.cursor;
+                        following = batch.cursor;
+                    }
+                }
+                if(following !== undefined) {
+                    const next = following;
+                    inFlight = this.withBusyRetry(() => this.getLogs(base, next));
+                }
+
+                this.emit('merging', index);
+                try {
+                    await merge.merge(opened);
+                } catch(error) {
+                    throw this.mergeFailure(error);
+                }
+
+                if(cursor === undefined) break;
             }
-
-            if(batch === undefined) { cursor = undefined; break; }
-            peerBatches = true;
-            if(batch.done || batch.cursor === undefined) { cursor = undefined; break; }
-            // A cursor we have already requested means the desktop is handing us the
-            // same batch forever; stop instead of looping until the session expires.
-            if(seen.has(batch.cursor))
-                throw fail({type: 'badResponse', detail: 'the log download repeated a batch'});
-            seen.add(batch.cursor);
-            cursor = batch.cursor;
+            if(cursor !== undefined) throw fail({type: 'badResponse', detail: 'the log download did not finish'});
+        } catch(error) {
+            // Whatever is still on the wire is moot now. Adopt its rejection so it
+            // cannot resurface as an unhandled one after this failure is reported.
+            if(inFlight !== undefined) inFlight.catch(() => undefined);
+            throw error;
         }
-        if(cursor !== undefined) throw fail({type: 'badResponse', detail: 'the log download did not finish'});
 
         let received: MergeStats;
         try {
@@ -267,30 +308,52 @@ class SyncSession {
         // otherwise be re-read from scratch for each one.
         const sendOptions: SyncSendOptions = {...this.options.sendOptions, indexCache: new Map()};
 
-        for(let index = 0; index < SYNC_MAX_BATCHES; index++) {
-            this.emit('uploading', index);
-            let batch: SyncSendBatch;
-            try {
-                batch = await buildSyncBatch(store, position, sendOptions);
-            } catch(error) {
-                if(error instanceof ArchiveTooLargeError)
-                    throw fail({type: 'archiveTooLarge', direction: error.direction});
-                throw error;
-            }
-            const stats = await this.withBusyRetry(() => this.postLogs(base, batch.zip));
-            addStats(total, stats);
+        // The batch after the one being posted is built while that post is in flight,
+        // so reading and zipping this device's logs overlaps the wire and Horizon's
+        // merge. Only one build and one request are ever outstanding, so the shared
+        // `indexCache` is never touched concurrently; the cost is holding two archives.
+        let upcoming: Promise<SyncSendBatch> | undefined = this.buildBatch(store, position, sendOptions);
 
-            // A batching Horizon reports the running session total, so its last answer
-            // is the whole story. One that predates batching reports each call on its
-            // own, so those have to be summed; that can double count a conversation
-            // spanning batches, which needs an old desktop and a conversation over the
-            // batch budget at once.
-            if(batch.next === undefined) return peerBatches ? stats : total;
-            if(samePosition(batch.next, position))
-                throw fail({type: 'badResponse', detail: 'the upload stopped making progress'});
-            position = batch.next;
+        try {
+            for(let index = 0; index < SYNC_MAX_BATCHES; index++) {
+                this.emit('uploading', index);
+                const batch = await upcoming!;
+                upcoming = undefined;
+
+                const next = batch.next;
+                const stuck = next !== undefined && samePosition(next, position);
+                if(next !== undefined && !stuck) upcoming = this.buildBatch(store, next, sendOptions);
+
+                const stats = await this.withBusyRetry(() => this.postLogs(base, batch.zip));
+                addStats(total, stats);
+
+                // A batching Horizon reports the running session total, so its last answer
+                // is the whole story. One that predates batching reports each call on its
+                // own, so those have to be summed; that can double count a conversation
+                // spanning batches, which needs an old desktop and a conversation over the
+                // batch budget at once.
+                if(next === undefined) return peerBatches ? stats : total;
+                if(stuck) throw fail({type: 'badResponse', detail: 'the upload stopped making progress'});
+                position = next;
+            }
+            throw fail({type: 'badResponse', detail: 'the upload did not finish'});
+        } catch(error) {
+            if(upcoming !== undefined) upcoming.catch(() => undefined);
+            throw error;
         }
-        throw fail({type: 'badResponse', detail: 'the upload did not finish'});
+    }
+
+    /** One outgoing batch, with the archive size cap mapped onto the client's errors. */
+    private async buildBatch(
+        store: SyncStorage, position: SyncSendPosition, options: SyncSendOptions
+    ): Promise<SyncSendBatch> {
+        try {
+            return await buildSyncBatch(store, position, options);
+        } catch(error) {
+            if(error instanceof ArchiveTooLargeError)
+                throw fail({type: 'archiveTooLarge', direction: error.direction});
+            throw error;
+        }
     }
 
     /** Retry a transfer while Horizon reports it is busy with another one. */
