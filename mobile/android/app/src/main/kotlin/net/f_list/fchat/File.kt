@@ -79,7 +79,10 @@ class File(private val ctx: Context) {
 			try { zipStream?.close() } catch(e: Exception) { /* abandoned build */ }
 			val buffer = java.io.ByteArrayOutputStream()
 			zipBuffer = buffer
-			zipStream = ZipOutputStream(buffer)
+			// BEST_SPEED rather than the default level 6: the archive goes straight onto a
+			// LAN socket, so a few percent more bytes costs microseconds of transfer while
+			// the stronger deflate costs the phone real CPU time on every batch.
+			zipStream = ZipOutputStream(buffer).apply { setLevel(java.util.zip.Deflater.BEST_SPEED) }
 		}
 	}
 
