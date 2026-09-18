@@ -41,13 +41,46 @@ export interface SyncStorage {
     messagesFrom(
         character: string, key: string, byteOffset: number, maxJsonBytes: number, maxRecords: number
     ): Promise<LogSlice>;
-    /**
-     * Freeze `messages` as what the upload should send for this conversation,
-     * before the merge rewrites its log. An empty snapshot is meaningful and must
-     * be recorded: it says the conversation is new on this device, so the upload
-     * must not send it back at all.
-     */
-    snapshotForSend(character: string, key: string, messages: ReadonlyArray<LogMessage>): Promise<void>;
-    /** Drop every send snapshot, including any left behind by an interrupted session. */
+    /** Drop every send snapshot and rewrite scratch, including any an interrupted session left. */
     clearSendSnapshots(): Promise<void>;
+
+    // The streamed merge (`mergeStream.ts`) drives the rest. All of it works in
+    // bounded pieces so a conversation is never held whole, which is the difference
+    // between syncing a 300 MB conversation and running the phone out of memory.
+
+    /** Byte length of the conversation's live data file, 0 when there is none. */
+    rawLogSize(character: string, key: string): Promise<number>;
+    /** Raw record bytes from the live data file. Short reads at the end are fine. */
+    readRawLog(character: string, key: string, offset: number, length: number): Promise<Uint8Array>;
+
+    /**
+     * Record that the upload owes the first `prefix` bytes of the live log, which is
+     * everything it held before this session touched it. Does nothing when a snapshot
+     * is already recorded, so the first batch to reach a conversation defines it and
+     * later ones cannot widen it to include what they just merged in.
+     *
+     * A marker rather than a copy: an append leaves the earlier bytes exactly where
+     * they were, so there is nothing to duplicate. A prefix of 0 is meaningful and
+     * must be recorded, since it says the conversation is new on this device and the
+     * upload must not send it back at all.
+     */
+    markSendPrefix(character: string, key: string, prefix: number): Promise<void>;
+    /**
+     * Turn a prefix marker into a literal copy of those bytes, because a rewrite is
+     * about to move them. Streamed, never held whole. A no-op once the snapshot is
+     * already literal.
+     */
+    materializeSendSnapshot(character: string, key: string): Promise<void>;
+
+    /** Append records to the live data file and replace the `.idx` with `index`. */
+    appendToLog(character: string, key: string, records: Uint8Array, index: Uint8Array): Promise<void>;
+
+    /** Start a rewrite: open an empty scratch file for this conversation. */
+    beginRewrite(character: string, key: string): Promise<void>;
+    /** Append records to the open scratch file. */
+    appendRewrite(character: string, key: string, records: Uint8Array): Promise<void>;
+    /** Replace the live data file with the scratch and write `index`. */
+    commitRewrite(character: string, key: string, index: Uint8Array): Promise<void>;
+    /** Abandon the scratch file, leaving the live data file untouched. */
+    discardRewrite(character: string, key: string): Promise<void>;
 }

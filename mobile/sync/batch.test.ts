@@ -13,7 +13,8 @@ import {buildSyncBatch, mergeLogs, SYNC_SEND_START, SyncMerge} from './archive.t
 import type {MergeStats} from './archive.ts';
 import {runSync} from './client.ts';
 import type {SyncDeviceInfo} from './client.ts';
-import {serializeMessages, sliceLog} from './logMessage.ts';
+import {buildIndexFromDays, buildLogIndex, serializeMessages, sliceLog} from './logMessage.ts';
+import {scanLog} from './mergeStream.ts';
 import type {LogMessage} from './logMessage.ts';
 import {MemorySyncStorage} from './memoryStorage.ts';
 import {MockSyncServer, withBatchEnvelope} from './mockServer.ts';
@@ -52,6 +53,12 @@ function conversation(count: number, sender = 'Bob', from = 1_700_000_000): LogM
 
 function getRequests(server: MockSyncServer): Array<string | null> {
     return server.requests.filter((r) => r.method === 'GET' && r.path === '/v1/logs').map((r) => r.cursor);
+}
+
+/** How many of these batches actually carry an entry, since a trailing one can be empty. */
+function batchesCarrying(zips: Uint8Array[], entryName: string): number {
+    return zips.filter((zip) => new AdmZip(Buffer.from(zip)).getEntries()
+        .some((e) => e.entryName === entryName)).length;
 }
 
 async function mergeAll(zips: Uint8Array[], store: MemorySyncStorage): Promise<MergeStats> {
@@ -173,7 +180,7 @@ test('batch: a malformed envelope stops the loop rather than following a bad cur
 
 // MARK: Conversations that span batches
 
-test('batch: a split conversation is written once and counts as one creation', async () => {
+test('batch: a split conversation is appended per batch and counts as one creation', async () => {
     const desktop = new MemorySyncStorage();
     await desktop.seed('Alice', 'bob', 'Bob', conversation(12));
     const batches = await allBatches(desktop, {budget: 100});
@@ -182,7 +189,11 @@ test('batch: a split conversation is written once and counts as one creation', a
     const phone = new MemorySyncStorage();
     const stats = await mergeAll(batches, phone);
 
-    assert.equal(phone.writeCount, 1, 'the deferred flush must write the conversation exactly once');
+    // Each batch is written as it arrives rather than accumulated: an append costs
+    // nothing beyond its own records, and holding the conversation open across every
+    // batch is precisely what made one large conversation exhaust memory.
+    assert.equal(phone.writeCount, batchesCarrying(batches, 'characters/Alice/logs/bob.json'),
+        'each batch carrying the conversation appends once');
     assert.equal(stats.conversationsCreated, 1);
     assert.equal(stats.conversationsUpdated, 0, 'a creation extended by later batches is not also an update');
     assert.equal(stats.charactersTouched, 1);
@@ -199,9 +210,10 @@ test('batch: an existing conversation extended across batches counts as one upda
     await phone.seed('Alice', 'bob', 'Bob', [msg(1_600_000_000, 0, 'Me', 'older')]);
     const stats = await mergeAll(batches, phone);
 
-    assert.equal(phone.writeCount, 1);
+    assert.equal(phone.writeCount, batchesCarrying(batches, 'characters/Alice/logs/bob.json'),
+        'each batch carrying the conversation appends once');
     assert.equal(stats.conversationsCreated, 0);
-    assert.equal(stats.conversationsUpdated, 1);
+    assert.equal(stats.conversationsUpdated, 1, 'one conversation extended by many batches is one update');
 });
 
 test('batch: a duplicate at a batch boundary is not re-added and order holds', async () => {
@@ -643,6 +655,20 @@ class WatchedStore extends MemorySyncStorage {
         return super.readLog(character, key);
     }
 
+    async readRawLog(
+        character: string, key: string, offset: number, length: number
+    ): ReturnType<MemorySyncStorage['readRawLog']> {
+        await this.note();
+        return super.readRawLog(character, key, offset, length);
+    }
+
+    async appendToLog(
+        character: string, key: string, records: Uint8Array, index: Uint8Array
+    ): ReturnType<MemorySyncStorage['appendToLog']> {
+        await this.note();
+        return super.appendToLog(character, key, records, index);
+    }
+
     async messagesFrom(
         character: string, key: string, byteOffset: number, maxJsonBytes: number, maxRecords: number
     ): ReturnType<MemorySyncStorage['messagesFrom']> {
@@ -726,4 +752,123 @@ test('batch: the record allowance never binds before the byte budget', () => {
         SYNC_BATCH_MAX_RECORDS * MIN_JSON_RECORD_BYTES >= SYNC_BATCH_TARGET_BYTES,
         `${SYNC_BATCH_MAX_RECORDS} records of ${MIN_JSON_RECORD_BYTES} bytes does not reach `
             + `the ${SYNC_BATCH_TARGET_BYTES} byte budget`);
+});
+
+// MARK: Merging without holding a conversation
+
+/** Every message a store holds for one conversation, straight from its data file. */
+async function stored(store: MemorySyncStorage, character: string, key: string): Promise<LogMessage[]> {
+    return (await store.readLog(character, key)).messages;
+}
+
+test('scan: the streamed day table matches one built from the whole message list', async () => {
+    const store = new MemorySyncStorage();
+    // Three days, so the table has more than one entry and the offsets have to be right.
+    const messages = [
+        ...conversation(5, 'Bob', 1_700_000_000),
+        ...conversation(5, 'Bob', 1_700_100_000),
+        ...conversation(5, 'Bob', 1_700_200_000)
+    ].sort((a, b) => a.time - b.time);
+    await store.seed('Alice', 'bob', 'Bob', messages);
+
+    const scan = await scanLog(store, 'Alice', 'bob');
+    assert.equal(scan.damaged, false);
+    assert.equal(scan.size, (await store.readRawLog('Alice', 'bob', 0, 1 << 30)).length);
+    assert.equal(scan.lastTime, messages[messages.length - 1].time);
+    assert.deepEqual(buildIndexFromDays('Bob', scan.days), buildLogIndex('Bob', messages));
+});
+
+test('merge: newer messages are appended and the index still matches the data', async () => {
+    const phone = new MemorySyncStorage();
+    const old = conversation(6, 'Bob', 1_700_000_000);
+    await phone.seed('Alice', 'bob', 'Bob', old);
+    // A later day, so the append also has to extend the day table.
+    const fresh = conversation(6, 'Bob', 1_700_200_000);
+
+    const stats = await mergeLogs(archive({Alice: {bob: fresh}}), phone);
+    assert.equal(stats.messagesAdded, 6);
+    assert.equal(stats.conversationsUpdated, 1);
+
+    const all = [...old, ...fresh];
+    assert.deepEqual(await stored(phone, 'Alice', 'bob'), all);
+    // The index is what the log viewer seeks with. A wrong day offset hides that day's
+    // messages while every count still looks correct, so check it against a rebuild.
+    assert.deepEqual(phone.rawIndex('Alice', 'bob'), buildLogIndex('Bob', all));
+});
+
+test('merge: messages interleaved with stored days rebuild the log correctly', async () => {
+    const phone = new MemorySyncStorage();
+    const mine = [msg(1_700_000_000, 0, 'Me', 'first'), msg(1_700_200_000, 0, 'Me', 'last')];
+    await phone.seed('Alice', 'bob', 'Bob', mine);
+    // One in the middle of an existing day and one in a day that does not exist yet.
+    const theirs = [msg(1_700_000_001, 0, 'Bob', 'between'), msg(1_700_100_000, 0, 'Bob', 'new day')];
+
+    const stats = await mergeLogs(archive({Alice: {bob: theirs}}), phone);
+    assert.equal(stats.messagesAdded, 2);
+
+    const all = [...mine, ...theirs].sort((a, b) => a.time - b.time);
+    assert.deepEqual(await stored(phone, 'Alice', 'bob'), all);
+    assert.deepEqual(phone.rawIndex('Alice', 'bob'), buildLogIndex('Bob', all));
+});
+
+test('merge: re-merging stored messages rewrites nothing', async () => {
+    const phone = new MemorySyncStorage();
+    const mine = [msg(1_700_000_000, 0, 'Me', 'a'), msg(1_700_100_000, 0, 'Me', 'b')];
+    await phone.seed('Alice', 'bob', 'Bob', mine);
+    const before = Buffer.from(phone.rawLog('Alice', 'bob')!);
+
+    // Not newer than what is stored, so this takes the rewrite path and must still
+    // decide there is nothing to do rather than rebuilding the file.
+    const stats = await mergeLogs(archive({Alice: {bob: mine}}), phone);
+    assert.equal(stats.messagesAdded, 0);
+    assert.equal(phone.writeCount, 0, 'an idempotent merge must not write');
+    assert.deepEqual(phone.rawLog('Alice', 'bob'), before);
+});
+
+test('merge: a conversation larger than the batch budget is never read whole', async () => {
+    const desktop = new MemorySyncStorage();
+    await desktop.seed('Alice', 'bob', 'Bob', conversation(400));
+    const batches = await allBatches(desktop, {budget: 900});
+    assert.ok(batches.length >= 4, `expected several batches, got ${batches.length}`);
+
+    const phone = new MemorySyncStorage();
+    let widest = 0;
+    const watch = phone.readRawLog.bind(phone);
+    phone.readRawLog = async (c, k, offset, length) => {
+        const bytes = await watch(c, k, offset, length);
+        widest = Math.max(widest, bytes.length);
+        return bytes;
+    };
+    await mergeAll(batches, phone);
+
+    assert.deepEqual(await stored(phone, 'Alice', 'bob'), conversation(400));
+    assert.deepEqual(phone.rawIndex('Alice', 'bob'), buildLogIndex('Bob', conversation(400)));
+    // Every read is one day or one scan window, never the growing conversation. The
+    // whole log is a single day here, so a read of it would show up as the full size.
+    const size = phone.rawLog('Alice', 'bob')!.length;
+    assert.ok(widest < size, `a read of ${widest} bytes covered a ${size} byte conversation`);
+});
+
+test('merge: the send snapshot survives an append without copying the log', async () => {
+    const phone = new MemorySyncStorage();
+    const mine = conversation(4, 'Me', 1_700_000_000);
+    await phone.seed('Alice', 'bob', 'Bob', mine);
+
+    await mergeLogs(archive({Alice: {bob: conversation(4, 'Bob', 1_700_200_000)}}), phone);
+
+    // The upload owes exactly what this device held before the merge, not the desktop's
+    // messages echoed back at it.
+    const slice = await phone.messagesFrom('Alice', 'bob', 0, Infinity, Infinity);
+    assert.deepEqual(slice.messages, mine);
+});
+
+test('merge: the send snapshot survives a rewrite that moves the bytes', async () => {
+    const phone = new MemorySyncStorage();
+    const mine = [msg(1_700_000_000, 0, 'Me', 'first'), msg(1_700_200_000, 0, 'Me', 'last')];
+    await phone.seed('Alice', 'bob', 'Bob', mine);
+
+    await mergeLogs(archive({Alice: {bob: [msg(1_700_000_001, 0, 'Bob', 'between')]}}), phone);
+
+    const slice = await phone.messagesFrom('Alice', 'bob', 0, Infinity, Infinity);
+    assert.deepEqual(slice.messages, mine, 'the pre-merge content must survive the rewrite');
 });

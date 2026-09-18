@@ -17,8 +17,10 @@
  */
 
 import AdmZip from 'adm-zip';
-import {isFilesystemArtifact, mergeMessages} from './logMessage.ts';
+import {isFilesystemArtifact} from './logMessage.ts';
 import type {LogMessage} from './logMessage.ts';
+import {mergeConversation, scanLog} from './mergeStream.ts';
+import type {LogScan} from './mergeStream.ts';
 import {
     SYNC_BATCH_ENTRY, SYNC_BATCH_MAX_RECORDS, SYNC_BATCH_TARGET_BYTES, SYNC_MAX_BODY_BYTES,
     SYNC_MAX_UNCOMPRESSED_BYTES
@@ -196,16 +198,14 @@ export function openSyncBatch(zipData: Uint8Array): OpenedSyncBatch {
     return {entries, info: readBatchInfo(entries)};
 }
 
-/** A conversation held open across batches, written once when a later batch moves past it. */
-interface PendingConversation {
+/** The conversation the merge is currently writing into, and what it knows about it. */
+interface OpenConversation {
+    identity: string;
     character: string;
     key: string;
-    identity: string;
-    displayName: string;
-    /** Pre-merge local content, frozen as the send snapshot at flush time. */
-    existing: LogMessage[];
-    merged: LogMessage[];
-    added: number;
+    name: string;
+    /** Day table and size of its data file, updated in place by each merge. */
+    scan: LogScan;
     existed: boolean;
 }
 
@@ -214,13 +214,12 @@ interface PendingConversation {
  * zip, and a conversation too large for one batch arrives as the same entry path
  * in consecutive batches with an ascending run of messages.
  *
- * The native bridge has no append and no offset write, only whole-file writes, so
- * this does not follow Horizon's in-place extension. Instead it defers: a
- * conversation's added messages accumulate in memory across batches and are
- * written once, when a later batch moves past it. Slices arrive in a total order,
- * so only one conversation is ever open, and each conversation costs one read and
- * one write per session. A conversation that reappeared out of order would still
- * merge correctly, just with a second write.
+ * Each batch's messages are written as they arrive, through `mergeConversation`,
+ * which appends when the incoming run is newer than everything stored and streams a
+ * day-at-a-time rewrite when it is not. Nothing here ever holds a conversation: the
+ * only per-conversation state kept is its day table, and only for the one currently
+ * being written, since slices arrive in a total order. A conversation that reappears
+ * out of that order still merges correctly, at the cost of scanning it again.
  */
 export class SyncMerge {
     private readonly store: SyncStorage;
@@ -230,7 +229,7 @@ export class SyncMerge {
     private readonly skipped = new Set<string>();
     private readonly characters = new Set<string>();
     private messagesAdded = 0;
-    private pending: PendingConversation | undefined = undefined;
+    private open: OpenConversation | undefined = undefined;
 
     constructor(store: SyncStorage) { this.store = store; }
 
@@ -278,24 +277,23 @@ export class SyncMerge {
             }
             if(!Array.isArray(parsed)) continue;
 
-            if(this.pending === undefined || this.pending.identity !== identity) {
-                await this.flush();
-                await this.open(character, key, rawKey, identity, names);
-            }
-            const pending = this.pending;
-            if(pending === undefined) continue;
+            if(this.open === undefined || this.open.identity !== identity)
+                await this.openConversation(character, key, rawKey, identity, names);
+            const conversation = this.open;
+            if(conversation === undefined) continue;
 
-            const {merged, added} = mergeMessages(pending.merged, parsed as LogMessage[]);
-            if(added.length === 0) continue;
-            pending.merged = merged;
-            pending.added += added.length;
-            this.messagesAdded += added.length;
+            const added = await mergeConversation(
+                this.store, character, key, conversation.name, parsed as LogMessage[], conversation.scan);
+            if(added === 0) continue;
+            this.messagesAdded += added;
+            if(conversation.existed) this.updated.add(identity); else this.created.add(identity);
+            this.characters.add(character);
         }
     }
 
-    /** Flush the conversation still held open and return the session totals. */
+    /** Session totals. Every batch has already been written by the time this runs. */
     async finish(): Promise<MergeStats> {
-        await this.flush();
+        this.open = undefined;
         // Created wins over updated: a conversation this session created and then
         // extended in a later batch is one creation, not a creation plus an update.
         let updated = 0;
@@ -309,17 +307,17 @@ export class SyncMerge {
         };
     }
 
-    private async open(
+    private async openConversation(
         character: string, key: string, rawKey: string, identity: string,
         names: {[character: string]: {[key: string]: string}}
     ): Promise<void> {
-        const {messages, damaged} = await this.store.readLog(character, key);
-        if(damaged) {
+        this.open = undefined;
+        const scan = await scanLog(this.store, character, key);
+        if(scan.damaged) {
             // Protocol merge rule 4: skip the conversation whole and tell the user to
-            // run Fix Logs. Writing the parsed prefix back would silently destroy
-            // everything stored past the corruption.
+            // run Fix Logs. Rewriting it from the records that did parse would
+            // silently destroy everything stored past the corruption.
             this.skipped.add(identity);
-            this.pending = undefined;
             return;
         }
         let index = this.indexCache.get(character);
@@ -328,30 +326,14 @@ export class SyncMerge {
             this.indexCache.set(character, index);
         }
         const localName = index[key] !== undefined && index[key].name.length > 0 ? index[key].name : undefined;
-        this.pending = {
-            character, key, identity,
+        this.open = {
+            identity, character, key, scan,
             // The name is taken once, when the conversation is opened, so a per-batch
             // `logs-names.json` naming only that batch's conversations is enough.
-            displayName: localName ?? names[character]?.[key]
+            name: localName ?? names[character]?.[key]
                 ?? (rawKey.startsWith('#') ? rawKey.slice(1) : rawKey),
-            existing: messages,
-            merged: messages,
-            added: 0,
-            existed: index[key] !== undefined || messages.length > 0
+            existed: index[key] !== undefined || scan.size > 0
         };
-    }
-
-    private async flush(): Promise<void> {
-        const pending = this.pending;
-        this.pending = undefined;
-        // Nothing new: the conversation's storage must not be rewritten (idempotent,
-        // cheap), and with no rewrite the upload can read the log itself.
-        if(pending === undefined || pending.added === 0) return;
-        // Freeze what the upload owes Horizon before the log stops being it.
-        await this.store.snapshotForSend(pending.character, pending.key, pending.existing);
-        await this.store.replaceMessages(pending.character, pending.key, pending.displayName, pending.merged);
-        if(pending.existed) this.updated.add(pending.identity); else this.created.add(pending.identity);
-        this.characters.add(pending.character);
     }
 }
 
