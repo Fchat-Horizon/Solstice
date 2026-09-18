@@ -25,7 +25,10 @@ export class NodeSyncTransport implements SyncTransport {
             const req = http.request({
                 host: parsed.hostname,
                 port: Number(parsed.port),
-                path: parsed.pathname,
+                // pathname alone drops the query string, which the batched transfer's
+                // `?cursor=` rides in: a cursor loop would then silently refetch the first
+                // batch forever and every test of it would pass.
+                path: parsed.pathname + parsed.search,
                 method,
                 headers: {...headers, 'Content-Length': body !== undefined ? body.length : 0}
             }, (res) => {
