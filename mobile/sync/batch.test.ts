@@ -21,6 +21,8 @@ import {NodeSyncTransport} from './nodeTransport.ts';
 import {SyncError} from './payload.ts';
 import type {SyncSessionPayload} from './payload.ts';
 import {allBatches, archive, dumpStore, msg, wholeArchive} from './testArchive.ts';
+import {fromBase64, utf8} from './bytes.ts';
+import {createZipWriter} from './zipWriter.ts';
 
 const DEVICE: SyncDeviceInfo = {deviceName: 'Test Phone', platform: 'ios', appVersion: 'test'};
 
@@ -534,4 +536,50 @@ test('batch: withBatchEnvelope keeps the archive readable and adds the entry las
     const entries = new AdmZip(Buffer.from(stamped)).getEntries().map((e) => e.entryName);
     assert.equal(entries[entries.length - 1], 'sync-batch.json');
     assert.ok(entries.includes('characters/Alice/logs/bob.json'));
+});
+
+// MARK: Budget accounting without serializing
+
+test('slice: the computed JSON size matches what the array actually serializes to', () => {
+    const messages = conversation(50);
+    const slice = sliceLog(serializeMessages(messages), 0, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
+    // The budget is counted from the record's own field lengths rather than by
+    // stringifying it, which measured as one of the larger costs in the send path.
+    // Each record is charged its exact bytes plus one separator, so for unescaped
+    // content the total lands one byte under the array, which also carries a closing
+    // bracket. A fixed byte is not worth correcting against a 16 MiB budget.
+    assert.equal(slice.jsonBytes + 1, Buffer.byteLength(JSON.stringify(messages), 'utf8'));
+});
+
+test('slice: escaped and multibyte content is never over-counted', () => {
+    const messages = [
+        msg(1_700_000_000, 0, 'Bob', 'he said "hi"\nand \\ left'),
+        msg(1_700_000_001, 0, 'René', 'café \u{1F31F}')
+    ];
+    const slice = sliceLog(serializeMessages(messages), 0, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
+    const actual = Buffer.byteLength(JSON.stringify(messages), 'utf8');
+    // Escaping only grows the real figure, so the estimate is a lower bound. Being
+    // under is safe: the budget is a target, and the body cap sits far above it.
+    assert.ok(slice.jsonBytes <= actual, `${slice.jsonBytes} > ${actual}`);
+    assert.deepEqual(slice.messages, messages);
+});
+
+// MARK: The zip writer seam
+
+test('zip: the fallback writer produces an archive the merge can read', async () => {
+    const writer = await createZipWriter();
+    await writer.add('manifest.json', '{"version":2}');
+    await writer.add('characters/Alice/logs/bob.json',
+        JSON.stringify([msg(1_700_000_000, 0, 'Bob', 'hi \u{1F31F}')]));
+    const zip = await writer.finish();
+
+    const store = new MemorySyncStorage();
+    const stats = await mergeLogs(new Uint8Array(zip), store);
+    assert.equal(stats.messagesAdded, 1);
+    assert.equal((await store.readLog('Alice', 'bob')).messages[0].text, 'hi \u{1F31F}');
+});
+
+test('zip: utf8 encodes without going through the buffer polyfill', () => {
+    const text = 'café \u{1F31F} "quoted"';
+    assert.deepEqual(utf8(text), Buffer.from(text, 'utf8'));
 });

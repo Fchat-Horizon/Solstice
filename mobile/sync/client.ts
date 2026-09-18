@@ -262,12 +262,16 @@ class SyncSession {
         const {store} = this.options;
         let position: SyncSendPosition = SYNC_SEND_START;
         const total = zeroStats();
+        // Shared across every batch: recovering display names means reading each
+        // conversation's `.idx`, and the character a batch resumes inside would
+        // otherwise be re-read from scratch for each one.
+        const sendOptions: SyncSendOptions = {...this.options.sendOptions, indexCache: new Map()};
 
         for(let index = 0; index < SYNC_MAX_BATCHES; index++) {
             this.emit('uploading', index);
             let batch: SyncSendBatch;
             try {
-                batch = await buildSyncBatch(store, position, this.options.sendOptions);
+                batch = await buildSyncBatch(store, position, sendOptions);
             } catch(error) {
                 if(error instanceof ArchiveTooLargeError)
                     throw fail({type: 'archiveTooLarge', direction: error.direction});

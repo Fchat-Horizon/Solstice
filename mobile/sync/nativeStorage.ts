@@ -17,6 +17,7 @@ import {
     serializeMessages, sliceLog
 } from './logMessage.ts';
 import type {LogMessage, LogSlice, StoredLog} from './logMessage.ts';
+import {fromBase64} from './bytes.ts';
 import type {SyncStorage} from './storage.ts';
 
 const CHUNK = 4 * 1024 * 1024;
@@ -49,7 +50,7 @@ async function readFileRange(path: string, offset: number, length: number): Prom
     while(read < length) {
         const chunkLen = Math.min(CHUNK, length - read);
         const b64 = await NativeFile.readBytes(path, offset + read, chunkLen);
-        const decoded = Buffer.from(b64, 'base64');
+        const decoded = fromBase64(b64);
         decoded.copy(buf, read);
         read += decoded.length;
         if(decoded.length === 0) break;

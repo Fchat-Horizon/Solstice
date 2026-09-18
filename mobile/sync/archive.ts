@@ -25,6 +25,7 @@ import {
 } from './payload.ts';
 import type {SyncBatchInfo} from './payload.ts';
 import type {SyncStorage} from './storage.ts';
+import {createZipWriter} from './zipWriter.ts';
 
 /**
  * Thrown when an archive exceeds one of the sync size caps (Horizon repo issue
@@ -377,6 +378,25 @@ export interface SyncSendOptions {
     budget?: number;
     maxRecords?: number;
     maxBodyBytes?: number;
+    /**
+     * Conversation indexes already read this session. `loadIndex` reads every `.idx`
+     * in a character's directory to recover display names, so the character a batch
+     * resumes inside would otherwise be re-read once per batch. Pass one map across
+     * the whole upload to pay for each character once.
+     */
+    indexCache?: Map<string, {[key: string]: {name: string}}>;
+}
+
+/** A character's conversation index, from the session cache when it is already there. */
+async function loadIndex(
+    store: SyncStorage, character: string, cache: Map<string, {[key: string]: {name: string}}>
+): Promise<{[key: string]: {name: string}}> {
+    let index = cache.get(character);
+    if(index === undefined) {
+        index = await store.loadIndex(character);
+        cache.set(character, index);
+    }
+    return index;
 }
 
 /** True when two positions name the same place, so a loop can refuse to spin. */
@@ -403,9 +423,10 @@ export async function buildSyncBatch(
     const budget = options.budget ?? SYNC_BATCH_TARGET_BYTES;
     const maxRecords = options.maxRecords ?? SYNC_BATCH_MAX_RECORDS;
     const maxBodyBytes = options.maxBodyBytes ?? SYNC_MAX_BODY_BYTES;
+    const indexCache = options.indexCache ?? new Map<string, {[key: string]: {name: string}}>();
 
     const characters = (await store.getCharacters()).sort(byCodeUnit);
-    const entries: Array<{name: string, data: Buffer}> = [];
+    const entries: Array<{name: string, text: string}> = [];
     const included: string[] = [];
     let remaining = budget;
     let records = maxRecords;
@@ -415,7 +436,7 @@ export async function buildSyncBatch(
 
     for(const character of characters) {
         if(start.character !== undefined && byCodeUnit(character, start.character) < 0) continue;
-        const index = await store.loadIndex(character);
+        const index = await loadIndex(store, character, indexCache);
         const names: {[key: string]: string} = {};
         let any = false;
         let stop = false;
@@ -426,7 +447,7 @@ export async function buildSyncBatch(
             if(slice.messages.length > 0) {
                 entries.push({
                     name: `characters/${character}/logs/${key}.json`,
-                    data: Buffer.from(JSON.stringify(slice.messages), 'utf8')
+                    text: JSON.stringify(slice.messages)
                 });
                 const name = index[key].name;
                 if(name.length > 0) names[key] = name;
@@ -453,18 +474,18 @@ export async function buildSyncBatch(
             // so a name shipped in a later batch would arrive too late to be used.
             entries.push({
                 name: `characters/${character}/logs-names.json`,
-                data: Buffer.from(JSON.stringify(sorted), 'utf8')
+                text: JSON.stringify(sorted)
             });
             included.push(character);
         }
         if(stop) break;
     }
 
-    const zip = new AdmZip();
+    const zip = await createZipWriter();
     // The manifest describes this batch alone.
-    zip.addFile('manifest.json', Buffer.from(JSON.stringify(manifest(included, entries.length), null, 2), 'utf8'));
-    for(const entry of entries) zip.addFile(entry.name, entry.data);
-    const buffer = zip.toBuffer();
+    await zip.add('manifest.json', JSON.stringify(manifest(included, entries.length), null, 2));
+    for(const entry of entries) await zip.add(entry.name, entry.text);
+    const buffer = await zip.finish();
     // Bound the outgoing upload to the same compressed body cap Horizon enforces. At
     // the batch budget this can no longer fire, which is the point: the cap used to
     // be checked only after the whole log set had already been built in memory.
