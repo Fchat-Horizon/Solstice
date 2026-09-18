@@ -9,27 +9,29 @@ import Compression
 //
 // Entries use DEFLATE (method 8) when that is smaller, otherwise STORED (method 0).
 enum ZipArchive {
-    static func zip(directory: URL, to destination: URL) throws {
-        let fm = FileManager.default
-        var output = Data()
-        var central = Data()
-        var entryCount: UInt16 = 0
-        let (dosTime, dosDate) = dosDateTime(Date())
+    /// Frames entries into a PKZIP archive one at a time, so only the entry being added
+    /// is live alongside the growing output. Shared by the backup export, which feeds it
+    /// files off disk, and by the log sync upload, which feeds it batch entries from the
+    /// WebView: doing the deflate and the UTF-8 encode here rather than in JavaScript is
+    /// most of what the sync's send path costs.
+    struct Writer {
+        private var output = Data()
+        private var central = Data()
+        private var entryCount: UInt16 = 0
+        private let dosTime: UInt16
+        private let dosDate: UInt16
 
-        let basePath = directory.standardizedFileURL.path
-        let files = regularFiles(under: directory, fm: fm).sorted { $0.path < $1.path }
+        init(now: Date = Date()) {
+            (dosTime, dosDate) = ZipArchive.dosDateTime(now)
+        }
 
-        for fileURL in files {
-            let fileData = (try? Data(contentsOf: fileURL)) ?? Data()
-            var rel = fileURL.standardizedFileURL.path
-            if rel.hasPrefix(basePath) { rel.removeFirst(basePath.count) }
-            while rel.hasPrefix("/") { rel.removeFirst() }
-            guard !rel.isEmpty, let nameData = rel.data(using: .utf8) else { continue }
+        mutating func add(name: String, data fileData: Data) {
+            guard !name.isEmpty, let nameData = name.data(using: .utf8) else { return }
 
-            let crc = crc32(fileData)
+            let crc = ZipArchive.crc32(fileData)
             var method: UInt16 = 0
             var payload = fileData
-            if !fileData.isEmpty, let deflated = deflate(fileData), deflated.count < fileData.count {
+            if !fileData.isEmpty, let deflated = ZipArchive.deflate(fileData), deflated.count < fileData.count {
                 method = 8
                 payload = deflated
             }
@@ -74,20 +76,40 @@ enum ZipArchive {
             entryCount += 1
         }
 
-        let centralOffset = UInt32(output.count)
-        output.append(central)
+        mutating func finish() -> Data {
+            let centralOffset = UInt32(output.count)
+            var result = output
+            result.append(central)
 
-        // End of central directory (0x06054b50)
-        output.appendLE(UInt32(0x06054b50))
-        output.appendLE(UInt16(0))                      // disk number
-        output.appendLE(UInt16(0))                      // disk with central dir
-        output.appendLE(entryCount)
-        output.appendLE(entryCount)
-        output.appendLE(UInt32(central.count))
-        output.appendLE(centralOffset)
-        output.appendLE(UInt16(0))                      // comment length
+            // End of central directory (0x06054b50)
+            result.appendLE(UInt32(0x06054b50))
+            result.appendLE(UInt16(0))                  // disk number
+            result.appendLE(UInt16(0))                  // disk with central dir
+            result.appendLE(entryCount)
+            result.appendLE(entryCount)
+            result.appendLE(UInt32(central.count))
+            result.appendLE(centralOffset)
+            result.appendLE(UInt16(0))                  // comment length
 
-        try output.write(to: destination)
+            output = Data()
+            central = Data()
+            entryCount = 0
+            return result
+        }
+    }
+
+    static func zip(directory: URL, to destination: URL) throws {
+        let fm = FileManager.default
+        let basePath = directory.standardizedFileURL.path
+        var writer = Writer()
+        for fileURL in regularFiles(under: directory, fm: fm).sorted(by: { $0.path < $1.path }) {
+            var rel = fileURL.standardizedFileURL.path
+            if rel.hasPrefix(basePath) { rel.removeFirst(basePath.count) }
+            while rel.hasPrefix("/") { rel.removeFirst() }
+            guard !rel.isEmpty else { continue }
+            writer.add(name: rel, data: (try? Data(contentsOf: fileURL)) ?? Data())
+        }
+        try writer.finish().write(to: destination)
     }
 
     private static func regularFiles(under directory: URL, fm: FileManager) -> [URL] {
@@ -101,7 +123,7 @@ enum ZipArchive {
         return result
     }
 
-    private static func deflate(_ data: Data) -> Data? {
+    fileprivate static func deflate(_ data: Data) -> Data? {
         let dstCap = data.count + 64
         var dst = Data(count: dstCap)
         let written = dst.withUnsafeMutableBytes { (dstRaw: UnsafeMutableRawBufferPointer) -> Int in
@@ -118,19 +140,19 @@ enum ZipArchive {
         return Data(dst.prefix(written))
     }
 
-    private static let crcTable: [UInt32] = (0..<256).map { i -> UInt32 in
+    fileprivate static let crcTable: [UInt32] = (0..<256).map { i -> UInt32 in
         var c = UInt32(i)
         for _ in 0..<8 { c = (c & 1) != 0 ? (0xEDB88320 ^ (c >> 1)) : (c >> 1) }
         return c
     }
 
-    private static func crc32(_ data: Data) -> UInt32 {
+    fileprivate static func crc32(_ data: Data) -> UInt32 {
         var crc: UInt32 = 0xFFFFFFFF
         for b in data { crc = crcTable[Int((crc ^ UInt32(b)) & 0xFF)] ^ (crc >> 8) }
         return crc ^ 0xFFFFFFFF
     }
 
-    private static func dosDateTime(_ date: Date) -> (UInt16, UInt16) {
+    fileprivate static func dosDateTime(_ date: Date) -> (UInt16, UInt16) {
         let c = Calendar(identifier: .gregorian)
             .dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
         // Explicit Int locals — folding all of this into the UInt16(...) initialisers makes

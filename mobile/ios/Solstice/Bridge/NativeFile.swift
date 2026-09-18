@@ -24,6 +24,9 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
         return rootURL.appendingPathComponent(n)
     }
 
+    /// In-flight sync upload archive; see the `zipStart` case below.
+    private var zipWriter: ZipArchive.Writer?
+
     func userContentController(_ userContentController: WKUserContentController,
                               didReceive message: WKScriptMessage,
                               replyHandler: @escaping (Any?, String?) -> Void) {
@@ -53,6 +56,21 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
         case "ensureDirectory":
             try? fm.createDirectory(at: url(for: call.string(0)), withIntermediateDirectories: true)
             replyHandler(nil, nil)
+        case "zipStart":
+            // A new archive abandons any half-built one, so an interrupted upload
+            // cannot leak entries into the next batch.
+            zipWriter = ZipArchive.Writer()
+            replyHandler(nil, nil)
+        case "zipAdd":
+            // The entry text arrives as a plain string and is UTF-8 encoded here:
+            // encoding it in the WebView is a large part of what this call exists
+            // to avoid, and base64 would put it straight back.
+            zipWriter?.add(name: call.string(0), data: Data(call.string(1).utf8))
+            replyHandler(nil, nil)
+        case "zipFinish":
+            let finished = zipWriter?.finish() ?? Data()
+            zipWriter = nil
+            replyHandler(finished.base64EncodedString(), nil)
         case "exportData":
             replyHandler(exportData(), nil)
         case "exportCrashLog":

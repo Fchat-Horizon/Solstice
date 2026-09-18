@@ -62,6 +62,49 @@ class File(private val ctx: Context) {
 	@JavascriptInterface
 	fun delete(name: String): Boolean = File(ctx.filesDir, name).delete()
 
+	// In-memory zip builder for the log sync upload. The WebView's zlib and Buffer are
+	// JavaScript polyfills, and on a real log store they cost more than everything else
+	// in the send path put together, so the archive is framed here instead. Entries
+	// arrive one at a time as plain strings (never base64: encoding them in the polyfill
+	// is the cost being avoided) and are UTF-8 encoded on this side.
+	//
+	// Synchronized because addJavascriptInterface calls arrive on a binder thread, and
+	// reset by zipStart so an abandoned build cannot leak into the next one.
+	private var zipBuffer: java.io.ByteArrayOutputStream? = null
+	private var zipStream: ZipOutputStream? = null
+
+	@JavascriptInterface
+	fun zipStart() {
+		synchronized(this) {
+			try { zipStream?.close() } catch(e: Exception) { /* abandoned build */ }
+			val buffer = java.io.ByteArrayOutputStream()
+			zipBuffer = buffer
+			zipStream = ZipOutputStream(buffer)
+		}
+	}
+
+	@JavascriptInterface
+	fun zipAdd(name: String, text: String) {
+		synchronized(this) {
+			val stream = zipStream ?: return
+			stream.putNextEntry(ZipEntry(name))
+			stream.write(text.toByteArray(Charsets.UTF_8))
+			stream.closeEntry()
+		}
+	}
+
+	@JavascriptInterface
+	fun zipFinish(): String {
+		synchronized(this) {
+			val stream = zipStream ?: return ""
+			val buffer = zipBuffer ?: return ""
+			stream.close()
+			zipStream = null
+			zipBuffer = null
+			return android.util.Base64.encodeToString(buffer.toByteArray(), android.util.Base64.NO_WRAP)
+		}
+	}
+
 	// Extensions that are internal SQLite/journal files — never include in exports.
 	private val skippedExtensions = setOf(".db", ".db-wal", ".db-shm", ".db-journal")
 
