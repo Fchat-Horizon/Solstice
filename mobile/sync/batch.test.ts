@@ -21,7 +21,7 @@ import {NodeSyncTransport} from './nodeTransport.ts';
 import {SyncError} from './payload.ts';
 import type {SyncSessionPayload} from './payload.ts';
 import {allBatches, archive, dumpStore, msg, wholeArchive} from './testArchive.ts';
-import {fromBase64, utf8} from './bytes.ts';
+import {fromBase64, toBase64, utf8} from './bytes.ts';
 import {createZipWriter} from './zipWriter.ts';
 
 const DEVICE: SyncDeviceInfo = {deviceName: 'Test Phone', platform: 'ios', appVersion: 'test'};
@@ -582,4 +582,17 @@ test('zip: the fallback writer produces an archive the merge can read', async ()
 test('zip: utf8 encodes without going through the buffer polyfill', () => {
     const text = 'café \u{1F31F} "quoted"';
     assert.deepEqual(utf8(text), Buffer.from(text, 'utf8'));
+});
+
+test('zip: base64 encodes without going through the buffer polyfill', () => {
+    const bytes = new Uint8Array(Array.from({length: 512}, (_, i) => (i * 37) & 0xff));
+    assert.equal(toBase64(bytes), Buffer.from(bytes).toString('base64'));
+    // Every length modulo 3 exercises a different amount of padding.
+    for(const length of [0, 1, 2, 3, 4, 5]) {
+        const slice = bytes.subarray(0, length);
+        assert.equal(toBase64(slice), Buffer.from(slice).toString('base64'));
+        assert.deepEqual(new Uint8Array(fromBase64(toBase64(slice))), slice);
+    }
+    // A view into a larger buffer must encode only its own window.
+    assert.equal(toBase64(bytes.subarray(8, 20)), Buffer.from(bytes.subarray(8, 20)).toString('base64'));
 });

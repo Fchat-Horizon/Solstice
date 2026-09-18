@@ -3,7 +3,9 @@
  * `mobile/filesystem.ts`), i.e. the real on-device log files under
  * `<character>/logs/`. Reads whole data files in 4 MB chunks (the same guard the
  * zip importer uses to avoid a giant base64 string through the bridge) and
- * writes the binary data + `.idx` back as base64. Production only: the tests use
+ * writes the binary data + `.idx` back as base64. Both directions go through
+ * `bytes.ts`: a merge rewrites every conversation it touches, so the write side
+ * converts as many bytes as the read side does. Production only: the tests use
  * `MemorySyncStorage` instead, so this file is never loaded under `node --test`.
  *
  * Send snapshots live beside each conversation as `<key>.syncsend`. The bridge has
@@ -17,7 +19,7 @@ import {
     serializeMessages, sliceLog
 } from './logMessage.ts';
 import type {LogMessage, LogSlice, StoredLog} from './logMessage.ts';
-import {fromBase64} from './bytes.ts';
+import {fromBase64, toBase64} from './bytes.ts';
 import type {SyncStorage} from './storage.ts';
 
 const CHUNK = 4 * 1024 * 1024;
@@ -107,8 +109,8 @@ export class NativeSyncStorage implements SyncStorage {
         await NativeFile.ensureDirectory(`${character}/logs`);
         const data = serializeMessages(ordered);
         const idx = buildLogIndex(name, ordered);
-        await NativeFile.writeBytes(`${character}/logs/${key}`, data.toString('base64'));
-        await NativeFile.writeBytes(`${character}/logs/${key}.idx`, idx.toString('base64'));
+        await NativeFile.writeBytes(`${character}/logs/${key}`, toBase64(data));
+        await NativeFile.writeBytes(`${character}/logs/${key}.idx`, toBase64(idx));
     }
 
     async logSize(character: string, key: string): Promise<number> {
@@ -157,7 +159,7 @@ export class NativeSyncStorage implements SyncStorage {
         stamped[0] = SNAPSHOT_VERSION;
         data.copy(stamped, 1);
         await NativeFile.ensureDirectory(`${character}/logs`);
-        await NativeFile.writeBytes(`${character}/logs/${key}${SNAPSHOT_SUFFIX}`, stamped.toString('base64'));
+        await NativeFile.writeBytes(`${character}/logs/${key}${SNAPSHOT_SUFFIX}`, toBase64(stamped));
     }
 
     async clearSendSnapshots(): Promise<void> {

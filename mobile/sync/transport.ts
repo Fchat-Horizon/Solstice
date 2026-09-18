@@ -9,7 +9,13 @@
  * still-encrypted body) or fails to connect (rejects). The client treats a
  * rejection as "try the next address" and a resolution as final, so connection
  * failures must reject rather than resolve with a synthetic status.
+ *
+ * The bridge carries bodies as base64, so every batch is converted whole in both
+ * directions. That goes through `bytes.ts` for the engine's own codecs rather than
+ * the `buffer` polyfill's JavaScript loops.
  */
+
+import {fromBase64, toBase64} from './bytes.ts';
 
 declare global {
     /**
@@ -43,14 +49,6 @@ export interface SyncTransport {
     ): Promise<SyncResponse>;
 }
 
-function toBase64(bytes: Uint8Array): string {
-    return Buffer.from(bytes).toString('base64');
-}
-
-function fromBase64(b64: string): Uint8Array {
-    return new Uint8Array(Buffer.from(b64, 'base64'));
-}
-
 /**
  * `SyncTransport` over the `NativeSync` bridge. The bridge does one plain-HTTP
  * request and returns `{status, bodyBase64}`; a connection-level failure rejects
@@ -63,6 +61,8 @@ export class NativeSyncTransport implements SyncTransport {
     ): Promise<SyncResponse> {
         const result = await NativeSync.request(
             method, url, headers, body !== undefined ? toBase64(body) : null, timeoutMs);
+        // `fromBase64` already returns a `Buffer`, which is a `Uint8Array`; wrapping it
+        // again would copy the whole body a second time.
         return {status: result.status, body: result.bodyBase64 ? fromBase64(result.bodyBase64) : new Uint8Array(0)};
     }
 }
