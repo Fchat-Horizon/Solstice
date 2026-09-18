@@ -19,7 +19,7 @@ import {MemorySyncStorage} from './memoryStorage.ts';
 import {MockSyncServer, withBatchEnvelope} from './mockServer.ts';
 import {NodeSyncTransport} from './nodeTransport.ts';
 import type {SyncResponse, SyncTransport} from './transport.ts';
-import {SyncError} from './payload.ts';
+import {SYNC_BATCH_MAX_RECORDS, SYNC_BATCH_TARGET_BYTES, SyncError} from './payload.ts';
 import type {SyncSessionPayload} from './payload.ts';
 import {allBatches, archive, dumpStore, msg, wholeArchive} from './testArchive.ts';
 import {fromBase64, toBase64, utf8} from './bytes.ts';
@@ -714,4 +714,16 @@ test('zip: base64 encodes without going through the buffer polyfill', () => {
     }
     // A view into a larger buffer must encode only its own window.
     assert.equal(toBase64(bytes.subarray(8, 20)), Buffer.from(bytes.subarray(8, 20)).toString('base64'));
+});
+
+test('batch: the record allowance never binds before the byte budget', () => {
+    // A record's JSON is at least a 40 byte frame plus a 10 digit timestamp, one digit
+    // of type and a one character sender. If the allowance sits below the budget
+    // divided by that, short messages fill a fraction of each batch and the batch
+    // count inflates until a large store cannot be uploaded at all.
+    const MIN_JSON_RECORD_BYTES = 40 + 10 + 1 + 1;
+    assert.ok(
+        SYNC_BATCH_MAX_RECORDS * MIN_JSON_RECORD_BYTES >= SYNC_BATCH_TARGET_BYTES,
+        `${SYNC_BATCH_MAX_RECORDS} records of ${MIN_JSON_RECORD_BYTES} bytes does not reach `
+            + `the ${SYNC_BATCH_TARGET_BYTES} byte budget`);
 });

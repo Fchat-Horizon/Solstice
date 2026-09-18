@@ -49,12 +49,25 @@ export const SYNC_CURSOR_START = 'start';
  * How much uncompressed JSON one outgoing batch targets, cut after the record that
  * crosses it (so a single record is never split), and how many records it may carry.
  * Counted on serialized JSON rather than binary log bytes because JSON escaping is
- * what the receiver has to allocate. Numerically Horizon's `SYNC_BATCH_TARGET_BYTES`
- * / `SYNC_BATCH_MAX_RECORDS`, though nothing requires the two to agree: each sender
- * picks its own batch size.
+ * what the receiver has to allocate. These size the batches this device *sends*;
+ * nothing requires them to match the peer's, since each sender picks its own.
+ *
+ * The record allowance is deliberately above Horizon's 150000. A record's JSON is at
+ * least 52 bytes (a 40 byte frame, a 10 digit timestamp, one digit of type and a one
+ * character sender), so a cap below `SYNC_BATCH_TARGET_BYTES / 52`, about 322600,
+ * binds before the byte budget whenever messages are short. That wastes most of the
+ * budget and inflates the batch count: at a 20 character average the old cap filled
+ * only 5.3 MB of a 16 MiB batch, which put a store over roughly 5 GB past
+ * `SYNC_MAX_BATCHES` and failed the upload outright. A phone reaches that size simply
+ * by finishing one download from a desktop that holds it, so the ceiling had to move.
+ *
+ * Measured cost of the larger allowance: the byte budget takes over at about 250000
+ * records even for 8 character messages, so peak heap while building a batch goes
+ * from 38 MB to 46 MB, in line with what a batch of ordinary length messages already
+ * costs. Raising it further changes nothing, because the bytes bind first.
  */
 export const SYNC_BATCH_TARGET_BYTES = 16 * 1024 * 1024;
-export const SYNC_BATCH_MAX_RECORDS = 150000;
+export const SYNC_BATCH_MAX_RECORDS = 350000;
 
 /** Batches per direction before a transfer is treated as runaway (Horizon's limit). */
 export const SYNC_MAX_BATCHES = 1024;
