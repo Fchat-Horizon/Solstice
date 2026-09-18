@@ -30,7 +30,7 @@
   window.NativeFile = make('nativeFile', [
     'read', 'getSize', 'readBytes', 'delete', 'write', 'writeBytes',
     'listDirectories', 'listFiles', 'ensureDirectory',
-    'zipStart', 'zipAdd', 'zipFinish',
+    'zipStart', 'zipAdd', 'zipFinish', 'appendBytes', 'rename',
     'exportData', 'exportCrashLog', 'pickImportFile'
   ]);
 

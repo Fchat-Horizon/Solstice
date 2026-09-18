@@ -24,6 +24,12 @@ declare global {
         zipStart?(): Promise<void>
         zipAdd?(name: string, text: string): Promise<void>
         zipFinish?(): Promise<string>
+        // Append and atomic replace, which the streamed sync merge needs to extend a
+        // conversation without rewriting it (mobile/sync/mergeStream.ts). Optional: a
+        // host built before these existed falls back to read-modify-write, which is
+        // correct but pays back the memory the streaming was there to save.
+        appendBytes?(name: string, base64: string): Promise<void>
+        rename?(from: string, to: string): Promise<boolean>
         exportData(): string
         // Saves the sanitized diagnostic log ('!crashlog') off-device: Android copies it to the
         // Downloads folder, iOS presents a share sheet. Returns the saved file name, or '' when there

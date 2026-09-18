@@ -49,6 +49,11 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
         case "writeBytes":
             writeData(Data(base64Encoded: call.string(1)) ?? Data(), to: url(for: call.string(0)))
             replyHandler(nil, nil)
+        case "appendBytes":
+            appendData(Data(base64Encoded: call.string(1)) ?? Data(), to: url(for: call.string(0)))
+            replyHandler(nil, nil)
+        case "rename":
+            replyHandler(rename(from: url(for: call.string(0)), to: url(for: call.string(1))), nil)
         case "listFiles":
             replyHandler(entries(at: url(for: call.string(0)), directories: false), nil)
         case "listDirectories":
@@ -87,6 +92,34 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         try? data.write(to: url)
+    }
+
+    // Appends, so the sync merge can extend a conversation without rewriting it. Without
+    // this the only way to add a message to a 300 MB log is to read, re-encode and write
+    // all 300 MB back, which costs about twice that in JavaScript objects.
+    private func appendData(_ data: Data, to url: URL) {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard fm.fileExists(atPath: url.path) else {
+            try? data.write(to: url)
+            return
+        }
+        guard let fh = try? FileHandle(forWritingTo: url) else { return }
+        defer { try? fh.close() }
+        _ = try? fh.seekToEnd()
+        try? fh.write(contentsOf: data)
+    }
+
+    // Moves a finished scratch file over the log it replaces, so a merge that dies partway
+    // leaves the original intact rather than a half-written one.
+    private func rename(from: URL, to: URL) -> Bool {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: from.path) else { return false }
+        try? fm.createDirectory(at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // replaceItemAt handles an existing destination, which plain moveItem refuses.
+        if (try? fm.replaceItemAt(to, withItemAt: from)) != nil { return true }
+        try? fm.removeItem(at: to)
+        return (try? fm.moveItem(at: from, to: to)) != nil
     }
 
     // Reads `length` bytes at `offset` and returns them base64-encoded. Mirrors File.kt's

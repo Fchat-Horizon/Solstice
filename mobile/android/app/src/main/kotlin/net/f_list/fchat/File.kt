@@ -37,6 +37,31 @@ class File(private val ctx: Context) {
 		FileOutputStream(File(ctx.filesDir, name)).use { it.write(bytes) }
 	}
 
+	// Append, so the sync merge can extend a conversation without rewriting it. Without
+	// this the only way to add a message to a 300 MB log is to read, re-encode and write
+	// all 300 MB back, which costs about twice that in JavaScript objects.
+	@JavascriptInterface
+	fun appendBytes(name: String, base64: String) {
+		val bytes = android.util.Base64.decode(base64, android.util.Base64.NO_WRAP)
+		val file = File(ctx.filesDir, name)
+		file.parentFile?.mkdirs()
+		FileOutputStream(file, true).use { it.write(bytes) }
+	}
+
+	// Move a finished scratch file over the log it replaces, so a merge that dies partway
+	// leaves the original intact rather than a half-written one.
+	@JavascriptInterface
+	fun rename(from: String, to: String): Boolean {
+		val source = File(ctx.filesDir, from)
+		val target = File(ctx.filesDir, to)
+		if(!source.exists()) return false
+		target.parentFile?.mkdirs()
+		if(source.renameTo(target)) return true
+		// Same-directory renames do not cross a filesystem boundary, so this only
+		// happens if the target is locked; deleting it first is the documented remedy.
+		return target.delete() && source.renameTo(target)
+	}
+
 	@JavascriptInterface
 	fun listFilesN(name: String) = JSONArray(File(ctx.filesDir, name).listFiles().filter { it.isFile }.map { it.name }).toString()
 
