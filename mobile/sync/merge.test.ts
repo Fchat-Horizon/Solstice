@@ -1,31 +1,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import AdmZip from 'adm-zip';
-import {archiveUncompressedBytes, ArchiveTooLargeError, buildSyncArchive, mergeLogs} from './archive.ts';
+import {
+    archiveUncompressedBytes, ArchiveTooLargeError, buildSyncBatch, mergeLogs, SYNC_SEND_START
+} from './archive.ts';
 import {isFilesystemArtifact} from './logMessage.ts';
-import type {LogMessage} from './logMessage.ts';
 import {MemorySyncStorage} from './memoryStorage.ts';
 import {inflateDeclaredSizes} from './oversizedArchive.ts';
 import {SYNC_MAX_UNCOMPRESSED_BYTES} from './payload.ts';
-
-function msg(time: number, type: number, sender: string, text: string): LogMessage {
-    return {time, type, sender, text};
-}
-
-/** Build a sync archive with the given per-character/key message lists and optional names. */
-function archive(
-    logs: {[character: string]: {[key: string]: LogMessage[]}},
-    names: {[character: string]: {[key: string]: string}} = {}
-): Uint8Array {
-    const zip = new AdmZip();
-    for(const [character, conversations] of Object.entries(logs)) {
-        for(const [key, messages] of Object.entries(conversations))
-            zip.addFile(`characters/${character}/logs/${key}.json`, Buffer.from(JSON.stringify(messages)));
-        if(names[character] !== undefined)
-            zip.addFile(`characters/${character}/logs-names.json`, Buffer.from(JSON.stringify(names[character])));
-    }
-    return new Uint8Array(zip.toBuffer());
-}
+import {archive, msg, wholeArchive} from './testArchive.ts';
 
 // MARK: Union merge
 
@@ -42,7 +25,7 @@ test('merge: is a message-level union', async () => {
     assert.equal(stats.conversationsUpdated, 1);
     assert.equal(stats.conversationsCreated, 0);
     assert.equal(stats.charactersTouched, 1);
-    assert.deepEqual(await store.allMessages('Alice', 'bob'), [local, shared, incoming]);
+    assert.deepEqual((await store.readLog('Alice', 'bob')).messages, [local, shared, incoming]);
 });
 
 test('merge: equal timestamps keep local first, then incoming', async () => {
@@ -55,7 +38,7 @@ test('merge: equal timestamps keep local first, then incoming', async () => {
     const inB = msg(500, 0, 'Them', 'incoming B');
     await mergeLogs(archive({C: {k: [inA, inB]}}), store);
 
-    assert.deepEqual(await store.allMessages('C', 'k'), [localA, localB, inA, inB]);
+    assert.deepEqual((await store.readLog('C', 'k')).messages, [localA, localB, inA, inB]);
 });
 
 test('merge: creates a missing conversation with the name from logs-names', async () => {
@@ -101,7 +84,7 @@ test('merge: is idempotent', async () => {
     assert.equal(second.conversationsCreated, 0);
     assert.equal(second.conversationsUpdated, 0);
     assert.equal(second.charactersTouched, 0);
-    assert.deepEqual(await store.allMessages('Alice', 'bob'), messages);
+    assert.deepEqual((await store.readLog('Alice', 'bob')).messages, messages);
 });
 
 test('merge: no new messages does not rewrite storage', async () => {
@@ -127,7 +110,7 @@ test('merge: out-of-bounds messages are skipped', async () => {
         archive({Alice: {bob: [good, badTime, badType, badSender, badText]}}), store);
 
     assert.equal(stats.messagesAdded, 1);
-    assert.deepEqual(await store.allMessages('Alice', 'bob'), [good]);
+    assert.deepEqual((await store.readLog('Alice', 'bob')).messages, [good]);
 });
 
 // MARK: Round trip through the export path
@@ -136,7 +119,7 @@ test('merge: an exported archive merges back with names and dedup', async () => 
     const source = new MemorySyncStorage();
     await source.seed('Alice', '#frontpage', 'Frontpage Chat', [msg(1_700_000_000, 0, 'Bob', 'channel')]);
     await source.seed('Alice', 'bob', 'Bob', [msg(1_700_000_005, 0, 'Bob', 'pm \u{1F31F}')]);
-    const zip = await buildSyncArchive(source);
+    const zip = await wholeArchive(source);
 
     const dest = new MemorySyncStorage();
     const first = await mergeLogs(zip, dest);
@@ -144,14 +127,14 @@ test('merge: an exported archive merges back with names and dedup', async () => 
     assert.equal(first.conversationsCreated, 2);
     assert.equal(first.charactersTouched, 1);
     assert.equal((await dest.loadIndex('Alice'))['#frontpage'].name, 'Frontpage Chat');
-    assert.equal((await dest.allMessages('Alice', 'bob'))[0].text, 'pm \u{1F31F}');
+    assert.equal(((await dest.readLog('Alice', 'bob')).messages)[0].text, 'pm \u{1F31F}');
 
     const second = await mergeLogs(zip, dest);
     assert.equal(second.messagesAdded, 0);
 });
 
 test('merge: an empty store produces a manifest-only archive', async () => {
-    const zip = await buildSyncArchive(new MemorySyncStorage());
+    const zip = await wholeArchive(new MemorySyncStorage());
     const entries = new AdmZip(Buffer.from(zip)).getEntries().map((e) => e.entryName);
     assert.deepEqual(entries, ['manifest.json']);
 });
@@ -166,7 +149,7 @@ test('merge: path-traversal entries are ignored', async () => {
 
     assert.equal(stats.messagesAdded, 1);
     assert.equal(stats.charactersTouched, 1);
-    assert.deepEqual(await store.allMessages('Alice', 'bob'), [m]);
+    assert.deepEqual((await store.readLog('Alice', 'bob')).messages, [m]);
 });
 
 // MARK: Type + artifact screening
@@ -179,7 +162,7 @@ test('merge: message types outside the defined 0-6 range are skipped', async () 
     const stats = await mergeLogs(archive({Alice: {bob: [bcast, justOver, byteMax]}}), store);
 
     assert.equal(stats.messagesAdded, 1);
-    assert.deepEqual(await store.allMessages('Alice', 'bob'), [bcast]);
+    assert.deepEqual((await store.readLog('Alice', 'bob')).messages, [bcast]);
 });
 
 test('isFilesystemArtifact: matches shell litter, not real conversation keys', () => {
@@ -202,7 +185,7 @@ test('merge: filesystem artifacts are not materialized as conversations', async 
     assert.equal(stats.messagesAdded, 1);
     assert.equal(stats.charactersTouched, 1);
     assert.deepEqual(Object.keys(await store.loadIndex('Alice')), ['bob']);
-    assert.deepEqual(await store.allMessages('Alice', 'bob'), [m]);
+    assert.deepEqual((await store.readLog('Alice', 'bob')).messages, [m]);
 });
 
 // MARK: Size caps
@@ -227,7 +210,7 @@ test('merge: rejects an archive that declares more than the uncompressed cap', a
         e instanceof ArchiveTooLargeError && e.direction === 'incoming');
     // Rejected before decompressing or merging anything.
     assert.equal(store.writeCount, 0);
-    assert.deepEqual(await store.allMessages('Alice', 'bob'), []);
+    assert.deepEqual((await store.readLog('Alice', 'bob')).messages, []);
 });
 
 test('merge: a normal archive under the cap still merges', async () => {
@@ -237,12 +220,12 @@ test('merge: a normal archive under the cap still merges', async () => {
     assert.equal((await mergeLogs(zip, store)).messagesAdded, 1);
 });
 
-test('buildSyncArchive: rejects when the built archive exceeds the body cap', async () => {
+test('buildSyncBatch: rejects when a built batch exceeds the body cap', async () => {
     const store = new MemorySyncStorage();
     await store.seed('Alice', 'bob', 'Bob', [msg(1_700_000_000, 0, 'Bob', 'hi')]);
     // A tiny cap stands in for the 512 MiB limit; building a real 512 MiB buffer is impractical.
-    await assert.rejects(buildSyncArchive(store, 10), (e: unknown) =>
+    await assert.rejects(buildSyncBatch(store, SYNC_SEND_START, {maxBodyBytes: 10}), (e: unknown) =>
         e instanceof ArchiveTooLargeError && e.direction === 'outgoing');
-    // The default cap leaves a normal archive well within bounds.
-    assert.ok((await buildSyncArchive(store)).length > 0);
+    // The default cap leaves a normal batch well within bounds.
+    assert.ok((await buildSyncBatch(store)).zip.length > 0);
 });
