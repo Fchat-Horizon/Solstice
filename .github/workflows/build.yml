@@ -82,10 +82,7 @@ jobs:
         id: release_type
         run: |
           TAG="${{ github.ref_name }}"
-          if [[ "$TAG" == *"-dev."* ]]; then
-            echo "draft=false" >> $GITHUB_OUTPUT
-            echo "prerelease=true" >> $GITHUB_OUTPUT
-          elif [[ "$TAG" == *"-beta."* ]]; then
+          if [[ "$TAG" == *"-dev."* || "$TAG" == *"-beta."* ]]; then
             echo "draft=true" >> $GITHUB_OUTPUT
             echo "prerelease=true" >> $GITHUB_OUTPUT
           else
