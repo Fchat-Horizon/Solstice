@@ -300,6 +300,10 @@
                                 const stats = await mergeLogs(logZip.toBuffer(), new NativeSyncStorage());
                                 if (stats.messagesAdded > 0)
                                     mergedNote = ` ${stats.messagesAdded} new message${stats.messagesAdded === 1 ? '' : 's'} merged.`;
+                                // Damaged conversations are left untouched rather than rewritten
+                                // from a truncated prefix, so say so instead of reporting success.
+                                if (stats.conversationsSkipped > 0)
+                                    mergedNote += ` ${stats.conversationsSkipped} damaged conversation${stats.conversationsSkipped === 1 ? ' was' : 's were'} skipped; open that character's logs so Solstice can repair them, then import again.`;
                             }
                             vm.importSummary = `Import complete. Restart the app to apply changes.${mergedNote}`;
                         } catch {

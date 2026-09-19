@@ -37,6 +37,31 @@ class File(private val ctx: Context) {
 		FileOutputStream(File(ctx.filesDir, name)).use { it.write(bytes) }
 	}
 
+	// Append, so the sync merge can extend a conversation without rewriting it. Without
+	// this the only way to add a message to a 300 MB log is to read, re-encode and write
+	// all 300 MB back, which costs about twice that in JavaScript objects.
+	@JavascriptInterface
+	fun appendBytes(name: String, base64: String) {
+		val bytes = android.util.Base64.decode(base64, android.util.Base64.NO_WRAP)
+		val file = File(ctx.filesDir, name)
+		file.parentFile?.mkdirs()
+		FileOutputStream(file, true).use { it.write(bytes) }
+	}
+
+	// Move a finished scratch file over the log it replaces, so a merge that dies partway
+	// leaves the original intact rather than a half-written one.
+	@JavascriptInterface
+	fun rename(from: String, to: String): Boolean {
+		val source = File(ctx.filesDir, from)
+		val target = File(ctx.filesDir, to)
+		if(!source.exists()) return false
+		target.parentFile?.mkdirs()
+		if(source.renameTo(target)) return true
+		// Same-directory renames do not cross a filesystem boundary, so this only
+		// happens if the target is locked; deleting it first is the documented remedy.
+		return target.delete() && source.renameTo(target)
+	}
+
 	@JavascriptInterface
 	fun listFilesN(name: String) = JSONArray(File(ctx.filesDir, name).listFiles().filter { it.isFile }.map { it.name }).toString()
 
@@ -61,6 +86,52 @@ class File(private val ctx: Context) {
 
 	@JavascriptInterface
 	fun delete(name: String): Boolean = File(ctx.filesDir, name).delete()
+
+	// In-memory zip builder for the log sync upload. The WebView's zlib and Buffer are
+	// JavaScript polyfills, and on a real log store they cost more than everything else
+	// in the send path put together, so the archive is framed here instead. Entries
+	// arrive one at a time as plain strings (never base64: encoding them in the polyfill
+	// is the cost being avoided) and are UTF-8 encoded on this side.
+	//
+	// Synchronized because addJavascriptInterface calls arrive on a binder thread, and
+	// reset by zipStart so an abandoned build cannot leak into the next one.
+	private var zipBuffer: java.io.ByteArrayOutputStream? = null
+	private var zipStream: ZipOutputStream? = null
+
+	@JavascriptInterface
+	fun zipStart() {
+		synchronized(this) {
+			try { zipStream?.close() } catch(e: Exception) { /* abandoned build */ }
+			val buffer = java.io.ByteArrayOutputStream()
+			zipBuffer = buffer
+			// BEST_SPEED rather than the default level 6: the archive goes straight onto a
+			// LAN socket, so a few percent more bytes costs microseconds of transfer while
+			// the stronger deflate costs the phone real CPU time on every batch.
+			zipStream = ZipOutputStream(buffer).apply { setLevel(java.util.zip.Deflater.BEST_SPEED) }
+		}
+	}
+
+	@JavascriptInterface
+	fun zipAdd(name: String, text: String) {
+		synchronized(this) {
+			val stream = zipStream ?: return
+			stream.putNextEntry(ZipEntry(name))
+			stream.write(text.toByteArray(Charsets.UTF_8))
+			stream.closeEntry()
+		}
+	}
+
+	@JavascriptInterface
+	fun zipFinish(): String {
+		synchronized(this) {
+			val stream = zipStream ?: return ""
+			val buffer = zipBuffer ?: return ""
+			stream.close()
+			zipStream = null
+			zipBuffer = null
+			return android.util.Base64.encodeToString(buffer.toByteArray(), android.util.Base64.NO_WRAP)
+		}
+	}
 
 	// Extensions that are internal SQLite/journal files — never include in exports.
 	private val skippedExtensions = setOf(".db", ".db-wal", ".db-shm", ".db-journal")

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {buildSyncArchive, mergeLogs} from './archive.ts';
+import {mergeLogs} from './archive.ts';
 import {describeSyncError, runSync, SYNC_STAGES} from './client.ts';
 import type {SyncDeviceInfo, SyncStage} from './client.ts';
 import {MemorySyncStorage} from './memoryStorage.ts';
@@ -9,6 +9,7 @@ import {NodeSyncTransport} from './nodeTransport.ts';
 import {inflateDeclaredSizes} from './oversizedArchive.ts';
 import {SyncError} from './payload.ts';
 import type {SyncErrorKind, SyncSessionPayload} from './payload.ts';
+import {wholeArchive} from './testArchive.ts';
 
 const DEVICE: SyncDeviceInfo = {deviceName: 'Test Phone', platform: 'ios', appVersion: 'test'};
 
@@ -20,7 +21,8 @@ async function run(payload: SyncSessionPayload, store: MemorySyncStorage, localA
     const stages: SyncStage[] = [];
     const result = await runSync({
         payload, transport: new NodeSyncTransport(), store, device: DEVICE, localAccount,
-        onStage: (stage) => stages.push(stage)
+        onStage: (stage) => stages.push(stage),
+        sleep: async () => undefined
     });
     return {result, stages};
 }
@@ -39,8 +41,11 @@ test('client: a full sync merges in both directions', async () => {
     const desktop = await storeWith({Alice: {bob: [1_700_000_000, 0, 'Bob', 'from desktop']}});
     const server = await MockSyncServer.start({
         account: 'AccountName',
-        logsToServe: await buildSyncArchive(desktop),
-        mergeStats: {conversationsCreated: 1, conversationsUpdated: 0, messagesAdded: 1, charactersTouched: 1}
+        logsToServe: await wholeArchive(desktop),
+        mergeStats: {
+            conversationsCreated: 1, conversationsUpdated: 0, messagesAdded: 1,
+            charactersTouched: 1, conversationsSkipped: 0
+        }
     });
     try {
         const phone = new MemorySyncStorage();
@@ -52,8 +57,8 @@ test('client: a full sync merges in both directions', async () => {
         assert.deepEqual(stages, SYNC_STAGES);
         assert.equal(result.received.messagesAdded, 1);
         assert.equal(result.received.conversationsCreated, 1);
-        assert.equal((await phone.allMessages('Alice', 'bob'))[0].text, 'from desktop');
-        assert.equal((await phone.allMessages('Alice', 'cat'))[0].text, 'from phone');
+        assert.equal(((await phone.readLog('Alice', 'bob')).messages)[0].text, 'from desktop');
+        assert.equal(((await phone.readLog('Alice', 'cat')).messages)[0].text, 'from phone');
         assert.equal(result.sent.messagesAdded, 1);
         assert.equal(result.remoteDeviceName, 'mock-desktop');
         assert.ok(server.finished);
@@ -62,8 +67,8 @@ test('client: a full sync merges in both directions', async () => {
         assert.ok(server.receivedUpload !== undefined);
         const check = new MemorySyncStorage();
         await mergeLogs(server.receivedUpload!, check);
-        assert.equal((await check.allMessages('Alice', 'cat'))[0].text, 'from phone');
-        assert.deepEqual(await check.allMessages('Alice', 'bob'), [],
+        assert.equal(((await check.readLog('Alice', 'cat')).messages)[0].text, 'from phone');
+        assert.deepEqual((await check.readLog('Alice', 'bob')).messages, [],
             'the phone must not echo the desktop\'s own logs back to it');
     } finally {
         server.stop();
@@ -72,7 +77,7 @@ test('client: a full sync merges in both directions', async () => {
 
 test('client: syncing with an empty desktop still uploads and finishes', async () => {
     const server = await MockSyncServer.start({
-        account: 'Acc', logsToServe: await buildSyncArchive(new MemorySyncStorage())
+        account: 'Acc', logsToServe: await wholeArchive(new MemorySyncStorage())
     });
     try {
         const phone = await storeWith({Me: {bob: [1, 0, 'Bob', 'hi']}});
@@ -170,7 +175,7 @@ test('client: a received archive over the uncompressed cap reports archiveTooLar
     // rejects it before decompressing; the client must map that to archiveTooLarge (the try/catch
     // around mergeLogs previously collapsed every failure into a generic badResponse).
     const desktop = await storeWith({Alice: {bob: [1_700_000_000, 0, 'Bob', 'from desktop']}});
-    const oversized = inflateDeclaredSizes(await buildSyncArchive(desktop), 0x90000000);
+    const oversized = inflateDeclaredSizes(await wholeArchive(desktop), 0x90000000);
     const server = await MockSyncServer.start({account: 'Acc', logsToServe: oversized});
     try {
         await assert.rejects(run(payloadFor(server, 'Acc'), new MemorySyncStorage(), 'Acc'), (e: unknown) =>

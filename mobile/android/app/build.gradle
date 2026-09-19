@@ -24,6 +24,14 @@ android {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        // A debug-signed build under its own application id, so a test build installs
+        // beside the real one instead of replacing it (their signatures differ, so an
+        // in-place update is refused and the only alternative would wipe the logs).
+        candidate {
+            initWith debug
+            applicationIdSuffix ".candidate"
+            versionNameSuffix "-candidate"
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

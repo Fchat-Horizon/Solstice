@@ -16,6 +16,20 @@ declare global {
         readBytes(name: string, offset: number, length: number): Promise<string>
         delete(name: string): Promise<boolean>
         ensureDirectory(name: string): Promise<void>
+        // Builds a zip in the native host rather than in the WebView: the bundled zlib and
+        // Buffer are JavaScript polyfills, and on a real log store they dominated the sync's
+        // cost. Entries stream over one at a time as plain strings, UTF-8 encoded natively;
+        // zipFinish returns the finished archive base64-encoded. Optional: a host built
+        // before these existed falls back to adm-zip (see mobile/sync/zipWriter.ts).
+        zipStart?(): Promise<void>
+        zipAdd?(name: string, text: string): Promise<void>
+        zipFinish?(): Promise<string>
+        // Append and atomic replace, which the streamed sync merge needs to extend a
+        // conversation without rewriting it (mobile/sync/mergeStream.ts). Optional: a
+        // host built before these existed falls back to read-modify-write, which is
+        // correct but pays back the memory the streaming was there to save.
+        appendBytes?(name: string, base64: string): Promise<void>
+        rename?(from: string, to: string): Promise<boolean>
         exportData(): string
         // Saves the sanitized diagnostic log ('!crashlog') off-device: Android copies it to the
         // Downloads folder, iOS presents a share sheet. Returns the saved file name, or '' when there

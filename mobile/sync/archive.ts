@@ -6,15 +6,28 @@
  * nothing. TypeScript port of Luna's `LogArchive`. Layout:
  *
  *   manifest.json                              { version:2, app, includes{...}, characters[] }
+ *   sync-batch.json                            { index, done, cursor } (batched transfers only)
  *   characters/<Character>/logs/<key>.json     a JSON array of {time,type,sender,text}
  *   characters/<Character>/logs-names.json     { "<key>": "<display name>" } (optional, cosmetic)
+ *
+ * Both directions work one bounded batch at a time (Horizon repo issue #958), so
+ * neither side ever holds the whole log set in memory. On the receive side that is
+ * `SyncMerge`, which carries one open conversation across batch boundaries; on the
+ * send side it is `buildSyncBatch`, which resumes from a byte position.
  */
 
 import AdmZip from 'adm-zip';
-import {isFilesystemArtifact, mergeMessages} from './logMessage.ts';
+import {isFilesystemArtifact} from './logMessage.ts';
 import type {LogMessage} from './logMessage.ts';
-import {SYNC_MAX_BODY_BYTES, SYNC_MAX_UNCOMPRESSED_BYTES} from './payload.ts';
+import {mergeConversation, scanLog} from './mergeStream.ts';
+import type {LogScan} from './mergeStream.ts';
+import {
+    SYNC_BATCH_ENTRY, SYNC_BATCH_MAX_RECORDS, SYNC_BATCH_TARGET_BYTES, SYNC_MAX_BODY_BYTES,
+    SYNC_MAX_UNCOMPRESSED_BYTES
+} from './payload.ts';
+import type {SyncBatchInfo} from './payload.ts';
 import type {SyncStorage} from './storage.ts';
+import {createZipWriter} from './zipWriter.ts';
 
 /**
  * Thrown when an archive exceeds one of the sync size caps (Horizon repo issue
@@ -48,12 +61,21 @@ export function archiveUncompressedBytes(zip: AdmZip): number {
  * Result of merging an archive into the local store. Field names match the sync
  * protocol's merge summary (the `POST /v1/logs` response), so the desktop's
  * reply decodes into this shape too.
+ *
+ * Across a batched transfer these are session totals, not per-batch sums: only
+ * `messagesAdded` is additive. A conversation created by one batch and extended
+ * by the next is one creation, a character touched by every batch is one
+ * character, and a damaged conversation refused by thirty batches is reported
+ * once. `SyncMerge` unions by conversation identity to get that, mirroring
+ * Horizon's `recordMerge`.
  */
 export interface MergeStats {
     conversationsCreated: number;
     conversationsUpdated: number;
     messagesAdded: number;
     charactersTouched: number;
+    /** Damaged local conversations left untouched; the user must run Fix Logs. */
+    conversationsSkipped: number;
 }
 
 interface ExportManifest {
@@ -88,6 +110,17 @@ function isSafeSegment(segment: string): boolean {
         && !segment.startsWith('.') && !segment.includes('\0');
 }
 
+/**
+ * Order by UTF-16 code unit, which is what `<` and `>` compare. The send side
+ * enumerates characters and conversation keys in this order and resumes with the
+ * same comparison, and the two have to agree: `localeCompare` does not order the
+ * same way `>=` does, so mixing them would skip or repeat conversations across a
+ * batch boundary. Client-internal, invisible on the wire.
+ */
+function byCodeUnit(a: string, b: string): number {
+    return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /** Display names per character from the optional `logs-names.json` entries (keys lowercased). */
 function displayNames(entries: AdmZip.IZipEntry[]): {[character: string]: {[key: string]: string}} {
     const result: {[character: string]: {[key: string]: string}} = {};
@@ -111,70 +144,208 @@ function displayNames(entries: AdmZip.IZipEntry[]): {[character: string]: {[key:
 }
 
 /**
- * Merge a sync zip (the device sync's downloaded archive, or a backup export)
- * into `store`. Idempotent: a conversation whose messages are all already
- * present is left untouched.
+ * The batch envelope of a received archive, or undefined when it carries none.
+ * Absence is meaningful: it is how a Horizon that predates batching answers a
+ * `?cursor=` request, and it means the archive holds the whole log set.
  */
-export async function mergeLogs(zipData: Uint8Array, store: SyncStorage): Promise<MergeStats> {
-    const zip = new AdmZip(Buffer.from(zipData));
-    const entries = zip.getEntries();
-    // A compressed zip can inflate far past the encrypted body cap. Reject before
-    // decompressing anything (displayNames below reads entry data), using the
-    // central-directory sizes AdmZip would allocate from.
-    if(archiveUncompressedBytes(zip) > SYNC_MAX_UNCOMPRESSED_BYTES) throw new ArchiveTooLargeError('incoming');
-    const names = displayNames(entries);
-    const stats: MergeStats = {
-        conversationsCreated: 0, conversationsUpdated: 0, messagesAdded: 0, charactersTouched: 0
-    };
-    const touched = new Set<string>();
-    const indexCache = new Map<string, {[key: string]: {name: string}}>();
-
+function readBatchInfo(entries: AdmZip.IZipEntry[]): SyncBatchInfo | undefined {
     for(const entry of entries) {
         if(entry.isDirectory) continue;
         const segments = pathSegments(entry.entryName);
-        if(segments.length !== 4 || segments[0] !== 'characters' || segments[2] !== 'logs'
-            || !segments[3].endsWith('.json')) continue;
-        const character = segments[1];
-        const rawKey = segments[3].slice(0, -'.json'.length);
-        // Keys are lowercased so mixed-case keys merge into their canonical conversation.
-        const key = rawKey.toLowerCase();
-        if(!isSafeSegment(character) || !isSafeSegment(key) || key.endsWith('.idx')) continue;
-        if(character === 'settings' || character === 'eicons') continue;
-        // A peer that did not screen its log dir can ship Thumbs.db/desktop.ini as a
-        // `.json` entry; never materialize filesystem litter as a conversation.
-        if(isFilesystemArtifact(key)) continue;
-
-        let parsed: unknown;
+        if(segments.length !== 1 || segments[0] !== SYNC_BATCH_ENTRY) continue;
         try {
-            parsed = JSON.parse(entry.getData().toString('utf8'));
+            const parsed: unknown = JSON.parse(entry.getData().toString('utf8'));
+            if(parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+            const wire = parsed as {index?: unknown, done?: unknown, cursor?: unknown};
+            return {
+                index: typeof wire.index === 'number' && Number.isInteger(wire.index) ? wire.index : 0,
+                done: wire.done === true,
+                cursor: typeof wire.cursor === 'string' && wire.cursor.length > 0 ? wire.cursor : undefined
+            };
         } catch {
-            continue;
+            // A malformed envelope is treated as none, which stops the cursor loop
+            // rather than following a cursor we cannot trust.
+            return undefined;
         }
-        if(!Array.isArray(parsed)) continue;
+    }
+    return undefined;
+}
 
-        const existing = await store.allMessages(character, key);
-        const {merged, added} = mergeMessages(existing, parsed as LogMessage[]);
-        // Nothing new: the conversation's storage must not be rewritten (idempotent, cheap).
-        if(added.length === 0) continue;
+/**
+ * A received archive, opened far enough to know where the transfer goes next but
+ * not yet merged. The split is what lets the client put the request for the next
+ * batch on the wire before merging this one: the envelope is a single tiny entry
+ * while the merge is the expensive half, so the desktop builds and sends the next
+ * batch during time this device was going to spend anyway.
+ */
+export interface OpenedSyncBatch {
+    readonly entries: AdmZip.IZipEntry[];
+    /** This archive's batch envelope, or undefined when it carries none. */
+    readonly info: SyncBatchInfo | undefined;
+}
 
-        let index = indexCache.get(character);
-        if(index === undefined) {
-            index = await store.loadIndex(character);
-            indexCache.set(character, index);
-        }
-        const existed = index[key] !== undefined || existing.length > 0;
-        const localName = index[key] !== undefined && index[key].name.length > 0 ? index[key].name : undefined;
-        const displayName = localName ?? names[character]?.[key]
-            ?? (rawKey.startsWith('#') ? rawKey.slice(1) : rawKey);
-        await store.replaceMessages(character, key, displayName, merged);
+/**
+ * Read an archive's central directory, enforce the uncompressed cap and take its
+ * batch envelope, without decompressing any conversation.
+ */
+export function openSyncBatch(zipData: Uint8Array): OpenedSyncBatch {
+    const zip = new AdmZip(Buffer.from(zipData));
+    const entries = zip.getEntries();
+    // A compressed zip can inflate far past the encrypted body cap. Reject before
+    // decompressing anything (the merge below reads entry data), using the
+    // central-directory sizes AdmZip would allocate from.
+    if(archiveUncompressedBytes(zip) > SYNC_MAX_UNCOMPRESSED_BYTES) throw new ArchiveTooLargeError('incoming');
+    return {entries, info: readBatchInfo(entries)};
+}
 
-        stats.messagesAdded += added.length;
-        if(existed) stats.conversationsUpdated++; else stats.conversationsCreated++;
-        touched.add(character);
+/** The conversation the merge is currently writing into, and what it knows about it. */
+interface OpenConversation {
+    identity: string;
+    character: string;
+    key: string;
+    name: string;
+    /** Day table and size of its data file, updated in place by each merge. */
+    scan: LogScan;
+    existed: boolean;
+}
+
+/**
+ * A merge session spanning one or more archives. Each batch is a complete sync
+ * zip, and a conversation too large for one batch arrives as the same entry path
+ * in consecutive batches with an ascending run of messages.
+ *
+ * Each batch's messages are written as they arrive, through `mergeConversation`,
+ * which appends when the incoming run is newer than everything stored and streams a
+ * day-at-a-time rewrite when it is not. Nothing here ever holds a conversation: the
+ * only per-conversation state kept is its day table, and only for the one currently
+ * being written, since slices arrive in a total order. A conversation that reappears
+ * out of that order still merges correctly, at the cost of scanning it again.
+ */
+export class SyncMerge {
+    private readonly store: SyncStorage;
+    private readonly indexCache = new Map<string, {[key: string]: {name: string}}>();
+    private readonly created = new Set<string>();
+    private readonly updated = new Set<string>();
+    private readonly skipped = new Set<string>();
+    private readonly characters = new Set<string>();
+    private messagesAdded = 0;
+    private open: OpenConversation | undefined = undefined;
+
+    constructor(store: SyncStorage) { this.store = store; }
+
+    /**
+     * Merge one archive, returning its batch envelope (undefined when it carries
+     * none, i.e. the peer sent the whole log set in one archive). The client opens
+     * the archive itself so it can request the next batch first; this is the whole
+     * step, for callers with nothing to overlap.
+     */
+    async mergeBatch(zipData: Uint8Array): Promise<SyncBatchInfo | undefined> {
+        const opened = openSyncBatch(zipData);
+        await this.merge(opened);
+        return opened.info;
     }
 
-    stats.charactersTouched = touched.size;
-    return stats;
+    /** Merge an archive already opened by `openSyncBatch`. */
+    async merge(opened: OpenedSyncBatch): Promise<void> {
+        const entries = opened.entries;
+        const names = displayNames(entries);
+
+        for(const entry of entries) {
+            if(entry.isDirectory) continue;
+            const segments = pathSegments(entry.entryName);
+            if(segments.length !== 4 || segments[0] !== 'characters' || segments[2] !== 'logs'
+                || !segments[3].endsWith('.json')) continue;
+            const character = segments[1];
+            const rawKey = segments[3].slice(0, -'.json'.length);
+            // Keys are lowercased so mixed-case keys merge into their canonical conversation.
+            const key = rawKey.toLowerCase();
+            if(!isSafeSegment(character) || !isSafeSegment(key) || key.endsWith('.idx')) continue;
+            if(character === 'settings' || character === 'eicons') continue;
+            // A peer that did not screen its log dir can ship Thumbs.db/desktop.ini as a
+            // `.json` entry; never materialize filesystem litter as a conversation.
+            if(isFilesystemArtifact(key)) continue;
+
+            const identity = `${character}/${key}`;
+            // Already judged damaged: skipped once for the session, not once per batch.
+            if(this.skipped.has(identity)) continue;
+
+            let parsed: unknown;
+            try {
+                parsed = JSON.parse(entry.getData().toString('utf8'));
+            } catch {
+                continue;
+            }
+            if(!Array.isArray(parsed)) continue;
+
+            if(this.open === undefined || this.open.identity !== identity)
+                await this.openConversation(character, key, rawKey, identity, names);
+            const conversation = this.open;
+            if(conversation === undefined) continue;
+
+            const added = await mergeConversation(
+                this.store, character, key, conversation.name, parsed as LogMessage[], conversation.scan);
+            if(added === 0) continue;
+            this.messagesAdded += added;
+            if(conversation.existed) this.updated.add(identity); else this.created.add(identity);
+            this.characters.add(character);
+        }
+    }
+
+    /** Session totals. Every batch has already been written by the time this runs. */
+    async finish(): Promise<MergeStats> {
+        this.open = undefined;
+        // Created wins over updated: a conversation this session created and then
+        // extended in a later batch is one creation, not a creation plus an update.
+        let updated = 0;
+        for(const identity of this.updated) if(!this.created.has(identity)) updated++;
+        return {
+            conversationsCreated: this.created.size,
+            conversationsUpdated: updated,
+            messagesAdded: this.messagesAdded,
+            charactersTouched: this.characters.size,
+            conversationsSkipped: this.skipped.size
+        };
+    }
+
+    private async openConversation(
+        character: string, key: string, rawKey: string, identity: string,
+        names: {[character: string]: {[key: string]: string}}
+    ): Promise<void> {
+        this.open = undefined;
+        const scan = await scanLog(this.store, character, key);
+        if(scan.damaged) {
+            // Protocol merge rule 4: skip the conversation whole and tell the user to
+            // run Fix Logs. Rewriting it from the records that did parse would
+            // silently destroy everything stored past the corruption.
+            this.skipped.add(identity);
+            return;
+        }
+        let index = this.indexCache.get(character);
+        if(index === undefined) {
+            index = await this.store.loadIndex(character);
+            this.indexCache.set(character, index);
+        }
+        const localName = index[key] !== undefined && index[key].name.length > 0 ? index[key].name : undefined;
+        this.open = {
+            identity, character, key, scan,
+            // The name is taken once, when the conversation is opened, so a per-batch
+            // `logs-names.json` naming only that batch's conversations is enough.
+            name: localName ?? names[character]?.[key]
+                ?? (rawKey.startsWith('#') ? rawKey.slice(1) : rawKey),
+            existed: index[key] !== undefined || scan.size > 0
+        };
+    }
+}
+
+/**
+ * Merge one complete sync zip (a backup export, or an unbatched sync download)
+ * into `store`. Idempotent: a conversation whose messages are all already present
+ * is left untouched.
+ */
+export async function mergeLogs(zipData: Uint8Array, store: SyncStorage): Promise<MergeStats> {
+    const merge = new SyncMerge(store);
+    await merge.mergeBatch(zipData);
+    return merge.finish();
 }
 
 function manifest(characters: string[], expectedFiles: number): ExportManifest {
@@ -192,46 +363,143 @@ function manifest(characters: string[], expectedFiles: number): ExportManifest {
 }
 
 /**
- * Build the sync zip for every character in `store`, as in-memory bytes (the
- * device sync uploads it as an HTTP body). An empty store is not an error: a
- * fresh device legitimately sends a manifest-only archive.
+ * Where the next upload batch resumes: a conversation key and a byte offset into
+ * its send source. Absent `character` means "start at the first character".
+ * Client-private, never serialized, so unlike Horizon's wire cursor it needs no
+ * opaque token.
  */
-export async function buildSyncArchive(store: SyncStorage, maxBodyBytes = SYNC_MAX_BODY_BYTES): Promise<Buffer> {
-    const characters = await store.getCharacters();
-    const entries: Array<{name: string, data: Buffer}> = [];
+export interface SyncSendPosition {
+    character?: string;
+    key?: string;
+    offset: number;
+}
+
+export const SYNC_SEND_START: SyncSendPosition = {offset: 0};
+
+export interface SyncSendBatch {
+    zip: Buffer;
+    /** Where the next batch resumes, or undefined when the log set is finished. */
+    next: SyncSendPosition | undefined;
+    conversations: number;
+    messages: number;
+}
+
+export interface SyncSendOptions {
+    /** Uncompressed JSON bytes to target, cut after the record that crosses it. */
+    budget?: number;
+    maxRecords?: number;
+    maxBodyBytes?: number;
+    /**
+     * Conversation indexes already read this session. `loadIndex` reads every `.idx`
+     * in a character's directory to recover display names, so the character a batch
+     * resumes inside would otherwise be re-read once per batch. Pass one map across
+     * the whole upload to pay for each character once.
+     */
+    indexCache?: Map<string, {[key: string]: {name: string}}>;
+}
+
+/** A character's conversation index, from the session cache when it is already there. */
+async function loadIndex(
+    store: SyncStorage, character: string, cache: Map<string, {[key: string]: {name: string}}>
+): Promise<{[key: string]: {name: string}}> {
+    let index = cache.get(character);
+    if(index === undefined) {
+        index = await store.loadIndex(character);
+        cache.set(character, index);
+    }
+    return index;
+}
+
+/** True when two positions name the same place, so a loop can refuse to spin. */
+export function samePosition(a: SyncSendPosition, b: SyncSendPosition): boolean {
+    return a.character === b.character && a.key === b.key && a.offset === b.offset;
+}
+
+/**
+ * Build one bounded batch of the outgoing sync zip, resuming from `start`. An
+ * empty store is not an error: a fresh device legitimately sends a manifest-only
+ * archive.
+ *
+ * Conversations are read through their send source (see `SyncStorage`), so a
+ * conversation the download rewrote contributes the content this device held
+ * before the merge rather than echoing the desktop's own messages back at it.
+ *
+ * A conversation larger than one batch simply spans several, carrying the same
+ * entry path in each with an ascending run of messages; the receiver's merge is a
+ * union, so the pieces reassemble with no extra protocol machinery.
+ */
+export async function buildSyncBatch(
+    store: SyncStorage, start: SyncSendPosition = SYNC_SEND_START, options: SyncSendOptions = {}
+): Promise<SyncSendBatch> {
+    const budget = options.budget ?? SYNC_BATCH_TARGET_BYTES;
+    const maxRecords = options.maxRecords ?? SYNC_BATCH_MAX_RECORDS;
+    const maxBodyBytes = options.maxBodyBytes ?? SYNC_MAX_BODY_BYTES;
+    const indexCache = options.indexCache ?? new Map<string, {[key: string]: {name: string}}>();
+
+    const characters = (await store.getCharacters()).sort(byCodeUnit);
+    const entries: Array<{name: string, text: string}> = [];
     const included: string[] = [];
+    let remaining = budget;
+    let records = maxRecords;
+    let next: SyncSendPosition | undefined = undefined;
+    let conversations = 0;
+    let messages = 0;
 
     for(const character of characters) {
-        const index = await store.loadIndex(character);
+        if(start.character !== undefined && byCodeUnit(character, start.character) < 0) continue;
+        const index = await loadIndex(store, character, indexCache);
         const names: {[key: string]: string} = {};
         let any = false;
-        for(const key of Object.keys(index).sort()) {
-            const messages = await store.allMessages(character, key);
-            if(messages.length === 0) continue;
-            entries.push({
-                name: `characters/${character}/logs/${key}.json`,
-                data: Buffer.from(JSON.stringify(messages), 'utf8')
-            });
-            const name = index[key].name;
-            if(name.length > 0) names[key] = name;
-            any = true;
+        let stop = false;
+        for(const key of Object.keys(index).sort(byCodeUnit)) {
+            if(character === start.character && start.key !== undefined && byCodeUnit(key, start.key) < 0) continue;
+            const offset = character === start.character && key === start.key ? start.offset : 0;
+            const slice = await store.messagesFrom(character, key, offset, remaining, records);
+            if(slice.messages.length > 0) {
+                entries.push({
+                    name: `characters/${character}/logs/${key}.json`,
+                    text: JSON.stringify(slice.messages)
+                });
+                const name = index[key].name;
+                if(name.length > 0) names[key] = name;
+                any = true;
+                conversations++;
+                messages += slice.messages.length;
+                remaining -= slice.jsonBytes;
+                records -= slice.messages.length;
+            }
+            // Stopping mid-conversation means the budget ran out inside it. Stopping at
+            // its end with nothing left means the next batch starts after it; the
+            // recorded offset is then the source's end, so resuming re-reads nothing.
+            if(!slice.atEof || remaining <= 0 || records <= 0) {
+                next = {character, key, offset: slice.nextOffset};
+                stop = true;
+                break;
+            }
         }
         if(any) {
-            const sortedNames: {[key: string]: string} = {};
-            for(const key of Object.keys(names).sort()) sortedNames[key] = names[key];
+            const sorted: {[key: string]: string} = {};
+            for(const key of Object.keys(names).sort(byCodeUnit)) sorted[key] = names[key];
+            // Names cover only this batch's conversations: the receiver takes a
+            // conversation's display name when it creates it and never revisits it,
+            // so a name shipped in a later batch would arrive too late to be used.
             entries.push({
                 name: `characters/${character}/logs-names.json`,
-                data: Buffer.from(JSON.stringify(sortedNames), 'utf8')
+                text: JSON.stringify(sorted)
             });
             included.push(character);
         }
+        if(stop) break;
     }
 
-    const zip = new AdmZip();
-    zip.addFile('manifest.json', Buffer.from(JSON.stringify(manifest(included, entries.length), null, 2), 'utf8'));
-    for(const entry of entries) zip.addFile(entry.name, entry.data);
-    const buffer = zip.toBuffer();
-    // Bound the outgoing upload to the same compressed body cap Horizon enforces.
+    const zip = await createZipWriter();
+    // The manifest describes this batch alone.
+    await zip.add('manifest.json', JSON.stringify(manifest(included, entries.length), null, 2));
+    for(const entry of entries) await zip.add(entry.name, entry.text);
+    const buffer = await zip.finish();
+    // Bound the outgoing upload to the same compressed body cap Horizon enforces. At
+    // the batch budget this can no longer fire, which is the point: the cap used to
+    // be checked only after the whole log set had already been built in memory.
     if(buffer.length > maxBodyBytes) throw new ArchiveTooLargeError('outgoing');
-    return buffer;
+    return {zip: buffer, next, conversations, messages};
 }

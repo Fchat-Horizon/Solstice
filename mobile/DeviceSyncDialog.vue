@@ -89,6 +89,7 @@
                     <p v-if="mergedAnything" class="ds-sub ds-note">
                         New messages appear the next time you open that character's logs.
                     </p>
+                    <p v-if="skippedNote" class="ds-sub ds-note">{{ skippedNote }}</p>
                     <button class="btn btn-primary ds-action" @click="close">Done</button>
                 </div>
 
@@ -120,12 +121,13 @@
     import {parseSessionPayload, SyncError} from './sync/payload';
     import type {SyncSessionPayload} from './sync/payload';
 
+    // Without the trailing ellipsis, so the batch counter can sit before it.
     const STAGE_LABELS: {[stage in SyncStage]: string} = {
-        connecting: 'Connecting to Horizon...',
-        downloading: 'Downloading Horizon\'s logs...',
-        merging: 'Merging into your logs...',
-        uploading: 'Sending your logs to Horizon...',
-        finishing: 'Finishing up...'
+        connecting: 'Connecting to Horizon',
+        downloading: 'Downloading Horizon\'s logs',
+        merging: 'Merging into your logs',
+        uploading: 'Sending your logs to Horizon',
+        finishing: 'Finishing up'
     };
 
     type Phase = 'choosing' | 'confirm' | 'running' | 'finished' | 'error';
@@ -140,6 +142,7 @@
                 pasteText: '',
                 payload: undefined as SyncSessionPayload | undefined,
                 stage: 'connecting' as SyncStage,
+                stageBatch: undefined as number | undefined,
                 result: undefined as SyncResult | undefined,
                 errorMessage: '',
                 stream: undefined as MediaStream | undefined,
@@ -153,8 +156,24 @@
             accountLabel(): string { return this.account.length > 0 ? this.account : 'the same account'; },
             isRunning(): boolean { return this.phase === 'running'; },
             isTerminal(): boolean { return this.phase === 'finished' || this.phase === 'error'; },
-            stageLabel(): string { return STAGE_LABELS[this.stage]; },
-            mergedAnything(): boolean { return this.result !== undefined && this.result.received.messagesAdded > 0; }
+            stageLabel(): string {
+                // A big log set moves in many batches; show which one so a long transfer
+                // does not look stuck. A one-batch sync reads exactly as it always did.
+                const batch = this.stageBatch !== undefined && this.stageBatch > 0
+                    ? ` (batch ${this.stageBatch + 1})` : '';
+                return `${STAGE_LABELS[this.stage]}${batch}...`;
+            },
+            mergedAnything(): boolean { return this.result !== undefined && this.result.received.messagesAdded > 0; },
+            skippedNote(): string {
+                if(this.result === undefined) return '';
+                if(this.result.received.conversationsSkipped > 0)
+                    return 'Some conversations on this device are damaged and were left untouched. '
+                        + 'Open that character\'s logs so Solstice can repair them, then sync again.';
+                if(this.result.sent.conversationsSkipped > 0)
+                    return 'Some conversations on the other device are damaged and were left untouched. '
+                        + 'Run Fix Logs in Horizon, then sync again.';
+                return '';
+            }
         },
         methods: {
             show(): void { this.reset(); this.visible = true; },
@@ -249,6 +268,7 @@
                 if(payload === undefined) return;
                 this.phase = 'running';
                 this.stage = 'connecting';
+                this.stageBatch = undefined;
                 ensureNativeSync();
                 const platform = document.documentElement.dataset.mobileOs === 'ios' ? 'ios' : 'android';
                 runSync({
@@ -257,7 +277,11 @@
                     store: new NativeSyncStorage(),
                     device: {deviceName: `Solstice on ${platform === 'ios' ? 'iOS' : 'Android'}`, platform, appVersion},
                     localAccount: this.account,
-                    onStage: (stage) => { if(this.phase === 'running') this.stage = stage; }
+                    onStage: (stage, batch) => {
+                        if(this.phase !== 'running') return;
+                        this.stage = stage;
+                        this.stageBatch = batch;
+                    }
                 }).then((result) => {
                     this.result = result;
                     this.phase = 'finished';
@@ -270,12 +294,19 @@
             },
 
             describeStats(stats: MergeStats): string {
-                if(stats.messagesAdded === 0) return 'Nothing new';
-                const conversations = stats.conversationsCreated + stats.conversationsUpdated;
-                const messages = `${stats.messagesAdded} message${stats.messagesAdded === 1 ? '' : 's'}`;
-                const convs = `${conversations} conversation${conversations === 1 ? '' : 's'}`;
-                const created = stats.conversationsCreated > 0 ? ` (${stats.conversationsCreated} new)` : '';
-                return `${messages} across ${convs}${created}`;
+                const parts: string[] = [];
+                if(stats.messagesAdded === 0) parts.push('Nothing new');
+                else {
+                    const conversations = stats.conversationsCreated + stats.conversationsUpdated;
+                    const messages = `${stats.messagesAdded} message${stats.messagesAdded === 1 ? '' : 's'}`;
+                    const convs = `${conversations} conversation${conversations === 1 ? '' : 's'}`;
+                    const created = stats.conversationsCreated > 0 ? ` (${stats.conversationsCreated} new)` : '';
+                    parts.push(`${messages} across ${convs}${created}`);
+                }
+                if(stats.conversationsSkipped > 0)
+                    parts.push(`${stats.conversationsSkipped} damaged conversation`
+                        + `${stats.conversationsSkipped === 1 ? '' : 's'} skipped`);
+                return parts.join('. ');
             }
         },
         beforeDestroy(): void { this.stopScan(); }

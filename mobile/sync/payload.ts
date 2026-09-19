@@ -28,6 +28,62 @@ export const SYNC_MAX_BODY_BYTES = 512 * 1024 * 1024;              // 512 MiB, c
 export const SYNC_MAX_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB, total uncompressed archive
 
 /**
+ * Protocol versions this client can speak. Batching is an amendment to v1 rather
+ * than a new version, so this is still just `{1}` -- but a set rather than an
+ * equality test, so a later envelope change can be accepted alongside v1 instead
+ * of locking every older build out of every newer desktop.
+ */
+export const SYNC_ACCEPTED_PROTOCOL_VERSIONS: ReadonlySet<number> = new Set([SYNC_PROTOCOL_VERSION]);
+
+/**
+ * Batched transfers (`GET /v1/logs?cursor=`). Passing the parameter at all is the
+ * capability signal: with no query string Horizon sends the whole archive, exactly
+ * as it always did, so a client that predates batching is unaffected. The first
+ * request uses `SYNC_CURSOR_START`; each batch names the cursor for the next one
+ * until it reports `done`.
+ */
+export const SYNC_BATCH_ENTRY = 'sync-batch.json';
+export const SYNC_CURSOR_START = 'start';
+
+/**
+ * How much uncompressed JSON one outgoing batch targets, cut after the record that
+ * crosses it (so a single record is never split), and how many records it may carry.
+ * Counted on serialized JSON rather than binary log bytes because JSON escaping is
+ * what the receiver has to allocate. These size the batches this device *sends*;
+ * nothing requires them to match the peer's, since each sender picks its own.
+ *
+ * The record allowance is deliberately above Horizon's 150000. A record's JSON is at
+ * least 52 bytes (a 40 byte frame, a 10 digit timestamp, one digit of type and a one
+ * character sender), so a cap below `SYNC_BATCH_TARGET_BYTES / 52`, about 322600,
+ * binds before the byte budget whenever messages are short. That wastes most of the
+ * budget and inflates the batch count: at a 20 character average the old cap filled
+ * only 5.3 MB of a 16 MiB batch, which put a store over roughly 5 GB past
+ * `SYNC_MAX_BATCHES` and failed the upload outright. A phone reaches that size simply
+ * by finishing one download from a desktop that holds it, so the ceiling had to move.
+ *
+ * Measured cost of the larger allowance: the byte budget takes over at about 250000
+ * records even for 8 character messages, so peak heap while building a batch goes
+ * from 38 MB to 46 MB, in line with what a batch of ordinary length messages already
+ * costs. Raising it further changes nothing, because the bytes bind first.
+ */
+export const SYNC_BATCH_TARGET_BYTES = 16 * 1024 * 1024;
+export const SYNC_BATCH_MAX_RECORDS = 350000;
+
+/** Batches per direction before a transfer is treated as runaway (Horizon's limit). */
+export const SYNC_MAX_BATCHES = 1024;
+
+/**
+ * The root `sync-batch.json` entry a batched archive carries. `cursor` is absent on
+ * the final batch, which is the one reporting `done`. An archive without this entry
+ * came from a Horizon that predates batching and holds the whole log set.
+ */
+export interface SyncBatchInfo {
+    index: number;
+    done: boolean;
+    cursor?: string;
+}
+
+/**
  * The session document Horizon encodes into its Device Sync QR code (and offers
  * as copyable text):
  *
@@ -118,7 +174,8 @@ export function parseSessionPayload(text: string): SyncSessionPayload {
     if(wire === null || typeof wire !== 'object') throw invalid('not a Horizon sync code');
 
     if(wire.app !== SYNC_APP_ID) throw invalid('not a Horizon sync code');
-    if(wire.v !== SYNC_PROTOCOL_VERSION) throw invalid(`unsupported sync version (${String(wire.v)})`);
+    if(typeof wire.v !== 'number' || !SYNC_ACCEPTED_PROTOCOL_VERSIONS.has(wire.v))
+        throw invalid(`unsupported sync version (${String(wire.v)})`);
 
     const addrs = Array.isArray(wire.addrs)
         ? wire.addrs.filter((a): a is string => typeof a === 'string' && a.length > 0)
