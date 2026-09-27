@@ -35,13 +35,18 @@
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label for="advanced"><input type="checkbox" id="advanced" v-model="showAdvanced"/> {{l('login.advanced')}}</label>
+                        <label for="advanced"><input type="checkbox" id="advanced" v-model="showAdvanced" class="form-check-input"/> {{l('login.advanced')}}</label>
                     </div>
                     <div class="mb-3">
-                        <label for="save"><input type="checkbox" id="save" v-model="saveLogin"/> {{l('login.save')}}</label>
+                        <label for="save"><input type="checkbox" id="save" v-model="saveLogin" class="form-check-input"/> {{l('login.save')}}</label>
                     </div>
                     <div class="mb-3" style="text-align:right">
                         <button class="btn btn-primary" @click="login()" :disabled="loggingIn">
+                            <div
+                                v-if="loggingIn"
+                                class="spinner-border spinner-border-sm"
+                                role="status"
+                            ></div>
                             {{l(loggingIn ? 'login.working' : 'login.submit')}}
                         </button>
                     </div>
