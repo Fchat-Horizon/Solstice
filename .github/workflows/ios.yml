@@ -8,13 +8,20 @@ name: Build iOS (SideStore)
 # code (verification only, no publish), and on manual dispatch. It deliberately does NOT build on
 # every push to development, so routine commits don't burn a macOS build.
 #
-# On a version tag the .ipa is published two ways: to the pre-release `ios-latest` with a STABLE
-# download URL for the SideStore source (one-tap install + updates), and attached to that version's
-# GitHub release alongside the Android APKs. The `ios-latest` pre-release is marked
-# prerelease + make_latest:false so it never hijacks the Android "Latest" release, and the release-tag
-# attachment only uploads the asset (gh release upload) without touching the release's draft state, so
-# the Android release pipeline (build.yml) is unaffected. Every run also archives the .ipa as a
-# private workflow artifact.
+# On a version tag the .ipa is published two ways, one per channel:
+#
+#   * STABLE (a `v*` tag with no `-dev.`/`-beta.` suffix) -> the .ipa AND a sidestore-source.json are
+#     attached to that version's own GitHub release, next to the Android APKs. The public SideStore
+#     source URL is `releases/latest/download/sidestore-source.json`, which GitHub resolves to the
+#     newest PUBLISHED, non-prerelease release, so the source only moves when a real release goes
+#     live (build.yml creates stable releases as drafts for the maintainer to publish).
+#   * TEST (every version tag, including `-dev.`) -> the rolling `ios-latest` pre-release, whose
+#     stable download URL feeds the test SideStore source. It is marked prerelease + make_latest:false
+#     so it never hijacks the "Latest" release.
+#
+# The release-tag attachment only uploads assets (gh release upload) without touching the release's
+# draft state, so the Android release pipeline (build.yml) is unaffected. Every run also archives the
+# .ipa as a private workflow artifact.
 
 permissions:
   contents: write
@@ -74,6 +81,17 @@ jobs:
           # version is constant across rolling builds, so SideStore never saw a change and offered
           # no update; stamping the run number makes each build newer than the last installed one.
           echo "display=${version}.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      # A `-dev.`/`-beta.` tag is a test build; anything else is a real release. Mirrors the same
+      # check in build.yml, which drafts stable releases and publishes pre-releases directly.
+      - name: Detect release channel
+        id: channel
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" == *"-dev."* || "$TAG" == *"-beta."* ]]; then STABLE=false; else STABLE=true; fi
+          echo "stable=${STABLE}" >> "$GITHUB_OUTPUT"
+          echo "Tag ${TAG} -> stable=${STABLE}"
 
       - name: Generate Xcode project
         working-directory: mobile/ios
@@ -141,6 +159,31 @@ jobs:
           path: mobile/ios/Solstice-*.ipa
           if-no-files-found: error
 
+      # Public one-tap install. The manifest rides along on the version's own release, so the
+      # `releases/latest/download/sidestore-source.json` URL always serves the newest PUBLISHED
+      # stable release: assets land on the draft release and go live when the maintainer publishes
+      # it. downloadURL is pinned to this exact tag so the manifest and the .ipa can never disagree.
+      - name: Prepare stable SideStore source
+        if: steps.channel.outputs.stable == 'true'
+        working-directory: mobile/ios
+        run: |
+          IPA="Solstice-${{ steps.version.outputs.version }}.ipa"
+          URL="${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/${IPA}"
+          mkdir -p stable
+          node - "${{ steps.version.outputs.version }}" "$(date -u +%Y-%m-%d)" "$(stat -f%z "$IPA")" "$URL" "${{ github.ref_name }}" <<'NODE'
+          const fs = require('fs');
+          const [version, date, size, url, tag] = process.argv.slice(2);
+          const src = JSON.parse(fs.readFileSync('sidestore-source.json', 'utf8'));
+          const app = src.apps[0];
+          const notes = `Solstice ${tag}. See the GitHub release notes for what changed.`;
+          Object.assign(app, { version, versionDate: date, versionDescription: notes,
+                               size: Number(size), downloadURL: url });
+          app.minOSVersion = '14.0.0';
+          app.versions = [{ version, date, localizedDescription: notes,
+                            downloadURL: url, size: Number(size), minOSVersion: '14.0.0' }];
+          fs.writeFileSync('stable/sidestore-source.json', JSON.stringify(src, null, 2));
+          NODE
+
       # One-tap on-device install: stable-named .ipa + a SideStore source pointing at it.
       # Only on a version push (a `v*` release tag), never on PRs.
       - name: Prepare rolling-release assets
@@ -154,6 +197,13 @@ jobs:
           const [version, date, size, url] = process.argv.slice(2);
           const src = JSON.parse(fs.readFileSync('sidestore-source.json', 'utf8'));
           const app = src.apps[0];
+          // Distinct source name/identifier from the stable channel, so someone who adds both
+          // sees two clearly labelled entries instead of a duplicate. The bundle identifier is
+          // deliberately NOT changed: it is the same app, and changing it would break updates
+          // for everyone already on this channel.
+          src.name = 'Solstice (Test)';
+          src.identifier = 'net.flist.solstice.source.test';
+          app.name = 'Solstice (Test)';
           Object.assign(app, { version, versionDate: date, size: Number(size), downloadURL: url });
           app.minOSVersion = '14.0.0';
           app.versions = [{ version, date, localizedDescription: 'Rolling iOS test build.',
@@ -195,11 +245,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
-          IPA="Solstice-${{ steps.version.outputs.version }}.ipa"
+          ASSETS=("Solstice-${{ steps.version.outputs.version }}.ipa")
+          # Present only on a stable tag; this is what the public SideStore source URL resolves to.
+          # Guarded with `if` rather than `&&`, since a false test would trip the shell's `set -e`.
+          if [ -f stable/sidestore-source.json ]; then
+            ASSETS+=(stable/sidestore-source.json)
+          fi
           for i in $(seq 1 10); do
             if gh release view "$TAG" >/dev/null 2>&1; then
-              gh release upload "$TAG" "$IPA" --clobber
-              echo "Attached $IPA to release $TAG"
+              gh release upload "$TAG" "${ASSETS[@]}" --clobber
+              echo "Attached ${ASSETS[*]} to release $TAG"
               exit 0
             fi
             echo "Release $TAG not ready yet ($i/10); waiting 30s..."

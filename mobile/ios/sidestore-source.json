@@ -7,7 +7,7 @@
       "bundleIdentifier": "net.flist.solstice",
       "developerName": "Solstice Contributors",
       "subtitle": "F-List.net chat client",
-      "localizedDescription": "Solstice is a community client for F-List.net chat — an iOS build of the Horizon/Solstice app.",
+      "localizedDescription": "Solstice is a community client for F-List.net chat, an iOS build of the Horizon/Solstice app.",
       "iconURL": "https://raw.githubusercontent.com/Fchat-Horizon/Solstice/development/mobile/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
       "tintColor": "262626",
       "category": "social",

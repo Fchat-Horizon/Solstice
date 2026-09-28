@@ -112,26 +112,41 @@ Solstice for iOS is publicly available through two channels:
   with [SideStore](https://sidestore.io/) installed, tap the button to add the source, then tap
   Install/Update:
 
-  [![Add to SideStore](https://img.shields.io/badge/Add%20to-SideStore-7B68EE?style=for-the-badge)](https://celloserenity.github.io/altdirect/?url=https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/sidestore-source.json&r=sidestore)
+  [![Add to SideStore](https://img.shields.io/badge/Add%20to-SideStore-7B68EE?style=for-the-badge)](https://altdirect.app/?url=https://github.com/Fchat-Horizon/Solstice/releases/latest/download/sidestore-source.json&r=sidestore)
 
   Or add this URL manually as a Source (GitHub strips the `sidestore://` scheme, so the button
-  routes through the [altdirect](https://github.com/CelloSerenity/altdirect) redirect):
+  routes through the [altdirect](https://github.com/StikDebug/altdirect) redirect):
 
   ```
-  https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/sidestore-source.json
+  https://github.com/Fchat-Horizon/Solstice/releases/latest/download/sidestore-source.json
   ```
 
-  The source tracks a **rolling pre-release** (tag `ios-latest`) rebuilt on each tagged
-  release, so it always points at the latest released build.
+  `releases/latest` always resolves to the newest **published release**, so this source only moves
+  when an actual release ships. Pre-release and test builds never reach it.
 
-- **Release IPA** if you prefer a tagged build: every
+- **Release IPA** if you prefer to install a build by hand: every
   [release](https://github.com/Fchat-Horizon/Solstice/releases) attaches a `Solstice-<version>.ipa`
   next to the Android APK. Download it on your iPhone and choose **Open in SideStore** (or **Open
-  in LiveContainer**). The rolling test build is downloadable the same way:
+  in LiveContainer**).
 
-  ```
-  https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/Solstice.ipa
-  ```
+<details>
+<summary>Test builds (rolling, unreleased)</summary>
+
+Every version tag, including pre-releases, also refreshes the rolling
+[`ios-latest`](https://github.com/Fchat-Horizon/Solstice/releases/tag/ios-latest) pre-release. It is
+newer but unproven, and it can be mid-feature or broken. Its own SideStore source is:
+
+```
+https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/sidestore-source.json
+```
+
+Or download the `.ipa` directly:
+
+```
+https://github.com/Fchat-Horizon/Solstice/releases/download/ios-latest/Solstice.ipa
+```
+
+</details>
 
 SideStore/LiveContainer re-signs the app on-device with your Apple ID (no paid account needed)
 and refreshes the 7-day signature automatically.
