@@ -330,17 +330,17 @@
                                 processed++;
                                 if (entry.isDirectory) continue;
                                 const name: string = entry.entryName;
-                                // Only on an actual yield: a reactive write per entry is thousands
-                                // of scheduler runs for a large export, and nothing can paint
-                                // between them anyway.
-                                vm.importProgress = `Reading ${processed} of ${entries.length} files…`;
                                 // The entry is named by SHAPE only (never its path) and written
                                 // before it is touched, so a process killed decoding it leaves the
                                 // culprit as the last line of the file.
                                 lastEntry = describeEntry(name, entry.header.size);
                                 if (processed % 100 === 0 || entry.header.size > 4 * 1024 * 1024)
                                     await trace.logPhase(`entry ${processed}/${entries.length} ${lastEntry}`);
-                                await breathe();
+                                // Only on an actual yield: a reactive write per entry is thousands
+                                // of scheduler runs for a large export, and nothing can paint
+                                // between them anyway.
+                                if (await breathe())
+                                    vm.importProgress = `Reading ${processed} of ${entries.length} files…`;
 
                                 if (pcFormat) {
                                     // — PC format —
@@ -460,12 +460,15 @@
                         } finally {
                             vm.importInProgress = false;
                             vm.importProgress = undefined;
-                            // Hand the trace over without making anyone hunt for it: Downloads on
-                            // Android, share sheet on iOS.
-                            const savedTrace = await trace.save();
-                            const where = savedTrace ? ` Import log saved as ${savedTrace}.` : '';
-                            if (vm.importError) vm.importError += where;
-                            else if (vm.importSummary) vm.importSummary += where;
+                            // Only on a failure. The trace is written on every import (it is the
+                            // only record of a run whose process gets killed), but handing it to the
+                            // OS is not free: on iOS it raises a share sheet, which after a
+                            // SUCCESSFUL import is just a confusing extra step. A failed import is
+                            // the one case where the user needs the file in hand.
+                            if (vm.importError) {
+                                const savedTrace = await trace.save();
+                                if (savedTrace) vm.importError += ` Import log saved as ${savedTrace}.`;
+                            }
                             if (vm._importTmpName) {
                                 try { await NativeFile.delete(vm._importTmpName); } catch { /* ignore */ }
                                 vm._importTmpName = undefined;

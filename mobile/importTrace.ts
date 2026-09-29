@@ -145,21 +145,24 @@ export class ImportTrace {
 /**
  * Called at boot. A '!importlog' that is still present and does not end in a terminal marker was
  * left by an import whose process died before it could finish or report: the one failure shape
- * that leaves no error behind. Mark it as such and keep it, so it is still there to be exported.
+ * that leaves no error behind. Mark it as such, keep it, and hand the marked text back so the
+ * caller can fold it into the diagnostic log the user can already export. Returns undefined when
+ * there is no interrupted import to report.
  */
-export async function noteInterruptedImport(): Promise<boolean> {
+export async function noteInterruptedImport(): Promise<string | undefined> {
     const native = (window as unknown as {NativeFile?: {read?(n: string): Promise<string | undefined>; write?(n: string, d: string): Promise<void>}}).NativeFile;
-    if (native?.read === undefined || native.write === undefined) return false;
+    if (native?.read === undefined || native.write === undefined) return undefined;
     try {
         const existing = await native.read('!importlog');
-        if (existing === undefined || existing === null || existing.length === 0) return false;
-        if (/\b(COMPLETED|FAILED|INTERRUPTED)\b/.test(existing)) return false;
-        await native.write('!importlog',
+        if (existing === undefined || existing === null || existing.length === 0) return undefined;
+        if (/\b(COMPLETED|FAILED|INTERRUPTED)\b/.test(existing)) return undefined;
+        const marked =
             `${existing}INTERRUPTED: the app restarted before this import finished, which means the\n` +
             'process was killed rather than the import throwing. The last entry and flush lines\n' +
-            'above are where it died.\n');
-        return true;
+            'above are where it died.\n';
+        await native.write('!importlog', marked);
+        return marked;
     } catch {
-        return false;
+        return undefined;
     }
 }

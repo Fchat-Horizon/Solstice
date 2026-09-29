@@ -269,9 +269,18 @@ if (document.documentElement.dataset.mobilePlatform === 'true') installResilienc
 // recorder so an import failure still leaves a stack in the shareable diagnostic log.
 (window as any).__logCrash = logCrash; //tslint:disable-line:no-any
 // An import whose process was killed leaves a trace with no terminal marker. Mark it at the next
-// boot, which is the only place that failure shape can be observed at all.
+// boot, which is the only place that failure shape can be observed at all, and fold the marked text
+// into '!crashlog' so the existing "Save error log" button hands it over. The trace records
+// entries by shape only and never any chat content, so it is safe to carry there.
 if (document.documentElement.dataset.mobilePlatform === 'true')
-    void noteInterruptedImport().then(found => { if (found) logDiag('import', 'previous run interrupted'); });
+    void noteInterruptedImport().then(trace => {
+        if (trace === undefined) return;
+        logDiag('import', 'previous run interrupted');
+        // '!crashlog' is capped newest-first, so a long trace pasted whole would have its TAIL
+        // truncated away: exactly the part that says where the import died. Keep the tail.
+        const tail = trace.length > 8192 ? `...\n${trace.slice(-8192)}` : trace;
+        void persistCrash(`[${new Date().toISOString()}] interrupted import trace:\n${tail}\n`);
+    });
 
 // Background-disconnect diagnostics (see logDiag): record each JS boot and every foreground/background
 // transition. On iOS the app process is held alive by the audio keep-alive, but iOS can still
