@@ -29,10 +29,11 @@
                     <div class="mb-3">
                         <label class="control-label" for="theme">{{l('settings.theme')}}</label>
                         <select class="form-select form-select" id="theme" v-model="settings.theme">
-                            <option>default</option>
-                            <option>dark</option>
-                            <option>light</option>
+                            <option v-for="theme in availableThemes" :value="theme">{{`${theme}`}}</option>
                         </select>
+                        <p>
+                            {{ settings.theme }}
+                        </p>
                     </div>
                     <div class="mb-3">
                         <label for="advanced"><input type="checkbox" id="advanced" v-model="showAdvanced"/> {{l('login.advanced')}}</label>
@@ -106,7 +107,12 @@
                 settings: undefined as GeneralSettings | undefined,
                 profileName: '',
                 backButtonHandler: null as ((e: Event) => void) | null,
+                availableThemes: [] as ReadonlyArray<string>,
             };
+        },
+        async mounted(): Promise<void> {
+            //  See also electron/Settings.vue. In the mobile build target, theme names are exposed through the window object (rather than read from the .asar file like in the Electron build).
+            this.availableThemes = (window as any).__availableThemes || [];
         },
         computed: {
             styling(): string {
