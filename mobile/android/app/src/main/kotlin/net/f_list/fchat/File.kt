@@ -141,7 +141,7 @@ class File(private val ctx: Context) {
 		return try {
 			val date = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
 			val fileName = "solstice-backup-$date.zip"
-			val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+			val dir = downloadsDir()
 			val outFile = File(dir, fileName)
 			val out = ZipOutputStream(FileOutputStream(outFile))
 
@@ -213,7 +213,7 @@ class File(private val ctx: Context) {
 			if (!src.exists() || src.length() == 0L) return ""
 			val date = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
 			val fileName = "solstice-crashlog-$date.txt"
-			val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+			val dir = downloadsDir()
 			val outFile = File(dir, fileName)
 			FileInputStream(src).use { input -> FileOutputStream(outFile).use { input.copyTo(it) } }
 			@Suppress("DEPRECATION")
@@ -237,7 +237,7 @@ class File(private val ctx: Context) {
 			if (!src.exists()) return ""
 			val fileName = displayName.substringAfterLast('/')
 			if (fileName.isEmpty()) return ""
-			val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+			val dir = downloadsDir()
 			val outFile = File(dir, fileName)
 			FileInputStream(src).use { input -> FileOutputStream(outFile).use { input.copyTo(it) } }
 			src.delete()
@@ -254,6 +254,15 @@ class File(private val ctx: Context) {
 			File(ctx.filesDir, staged).delete()
 			""
 		}
+	}
+
+	// Every export lands in Downloads. The directory is not guaranteed to exist yet on a fresh
+	// device or emulator image and FileOutputStream will not create it, so without this the
+	// save fails for no visible reason.
+	private fun downloadsDir(): File {
+		val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+		dir.mkdirs()
+		return dir
 	}
 
 	private fun zipCharacterDir(charDir: File, out: ZipOutputStream) {
