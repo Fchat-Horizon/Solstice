@@ -560,17 +560,56 @@
         this.searching = false;
       },
 
-      download(file: string, logs: string): void {
+      download(file: string, data: Buffer): void {
+        if (document.documentElement.dataset.mobilePlatform === 'true') {
+          void this.downloadNative(file, data);
+          return;
+        }
+        const url = URL.createObjectURL(new Blob([data]));
         const a = document.createElement('a');
-        a.href = logs;
+        a.href = url;
         a.setAttribute('download', file);
         a.style.display = 'none';
         document.body.appendChild(a);
         setTimeout(() => {
           a.click();
           document.body.removeChild(a);
-          URL.revokeObjectURL(logs);
+          URL.revokeObjectURL(url);
         });
+      },
+
+      // Mobile WebViews cannot download: WKWebView ignores <a download> outright and Android's
+      // WebView never fires its DownloadListener for blob: URLs, so the click silently does
+      // nothing. Stage the bytes in app storage instead and let the native host save them
+      // (iOS opens a share sheet, Android writes to Downloads).
+      async downloadNative(file: string, data: Buffer): Promise<void> {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const native = (window as any).NativeFile;
+        const staged = '!log-export';
+        const chunk = 1024 * 1024;
+        try {
+          // writeBytes/appendBytes resolve synchronously on the Android bridge and are
+          // genuinely async on iOS; awaiting covers both. Chunked so a whole-character
+          // archive never crosses the bridge as one huge base64 string.
+          await native.writeBytes(
+            staged,
+            data.subarray(0, chunk).toString('base64')
+          );
+          for (let offset = chunk; offset < data.length; offset += chunk)
+            await native.appendBytes(
+              staged,
+              data.subarray(offset, offset + chunk).toString('base64')
+            );
+          if (!(await native.saveExport(staged, file)))
+            throw new Error('saveExport failed');
+        } catch {
+          try {
+            await native.delete(staged);
+          } catch {
+            /* nothing was staged */
+          }
+          core.notifications.alert(l('logs.exportFailed'));
+        }
       },
 
       sanitizeConversationName(name: string): string {
@@ -625,10 +664,7 @@
           return;
         const html = Dialog.confirmDialog(l('logs.html'));
         const name = `${this.sanitizeConversationName(this.selectedConversation.name)}-${formatDate(new Date(this.selectedDate))}.${html ? 'html' : 'txt'}`;
-        this.download(
-          name,
-          `data:${encodeURIComponent(name)},${encodeURIComponent(getLogs(this.messages, html))}`
-        );
+        this.download(name, Buffer.from(getLogs(this.messages, html), 'utf-8'));
       },
 
       async downloadConversation(): Promise<void> {
@@ -648,7 +684,7 @@
         }
         this.download(
           `${this.sanitizeConversationName(this.selectedConversation.name)}.zip`,
-          URL.createObjectURL(new Blob([zip.toBuffer()]))
+          zip.toBuffer()
         );
       },
 
@@ -685,10 +721,7 @@
             );
           }
         }
-        this.download(
-          `${this.selectedCharacter}.zip`,
-          URL.createObjectURL(new Blob([zip.toBuffer()]))
-        );
+        this.download(`${this.selectedCharacter}.zip`, zip.toBuffer());
       },
 
       async onOpen(): Promise<void> {

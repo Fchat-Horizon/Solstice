@@ -80,6 +80,8 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
             replyHandler(exportData(), nil)
         case "exportCrashLog":
             replyHandler(exportCrashLog(), nil)
+        case "saveExport":
+            replyHandler(saveExport(staged: call.string(0), displayName: call.string(1)), nil)
         case "pickImportFile":
             host?.presentImportPicker()
             replyHandler(nil, nil)
@@ -189,6 +191,27 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
         do {
             try FileManager.default.copyItem(at: src, to: dest)
         } catch {
+            return ""
+        }
+        host?.presentShareSheet(fileURL: dest)
+        return fileName
+    }
+
+    // Hands a file the web layer staged in app storage (chat/Logs.vue writes it in chunks) to the
+    // share sheet under its display name, so exported chat logs can be saved anywhere iOS offers.
+    // WKWebView has no download support of its own, so this is the only route off the device.
+    // Returns the file name, or "" on failure. Mirrors File.kt's saveExport (Downloads on Android).
+    private func saveExport(staged: String, displayName: String) -> String {
+        let fm = FileManager.default
+        let src = url(for: staged)
+        let fileName = (displayName as NSString).lastPathComponent
+        guard !fileName.isEmpty, fm.fileExists(atPath: src.path) else { return "" }
+        let dest = fm.temporaryDirectory.appendingPathComponent(fileName)
+        try? fm.removeItem(at: dest)
+        do {
+            try fm.moveItem(at: src, to: dest)
+        } catch {
+            try? fm.removeItem(at: src)
             return ""
         }
         host?.presentShareSheet(fileURL: dest)

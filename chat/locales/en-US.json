@@ -536,6 +536,7 @@
   "logs.corruption.mobile.success": "Your logs have been fixed.",
   "logs.corruption.web": "Error reading logs from browser storage. If this issue persists, please clear your stored browser data for F-Chat.",
   "logs.date": "Date",
+  "logs.exportFailed": "Couldn't save the exported logs.",
   "logs.html": "Would you like to export these logs as HTML with formatting? Otherwise, they will be exported as plain text.",
   "logs.select": "Select",
   "logs.selectCharacter": "Select a character…",

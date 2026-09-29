@@ -36,6 +36,11 @@ declare global {
         // is no log yet or the save failed. (Android resolves synchronously, iOS returns a Promise;
         // await covers both, matching exportData.)
         exportCrashLog(): string
+        // Saves a file staged in app storage (written in chunks by chat/Logs.vue's downloadNative)
+        // off-device under displayName: Android copies it to Downloads, iOS presents a share sheet.
+        // Either way the staged copy is consumed. Returns the saved file name, or '' on failure.
+        // Optional: a host built before this existed has no way to save an export at all.
+        saveExport?(staged: string, displayName: string): Promise<string>
     };
     type NativeMessage = {time: number, type: number, sender: string, text: string};
     const NativeLogs: {

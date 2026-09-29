@@ -225,6 +225,37 @@ class File(private val ctx: Context) {
 		}
 	}
 
+	// Copies a file the web layer staged in app storage (chat/Logs.vue writes it in chunks) into the
+	// public Downloads folder under its display name and registers it with DownloadManager, so exported
+	// chat logs land somewhere reachable. The WebView's DownloadListener never fires for blob: URLs, so
+	// this is the route for every log export. Returns the saved file name, or "" on failure. Mirrors
+	// NativeFile.swift's saveExport (share sheet on iOS).
+	@JavascriptInterface
+	fun saveExport(staged: String, displayName: String): String {
+		return try {
+			val src = File(ctx.filesDir, staged)
+			if (!src.exists()) return ""
+			val fileName = displayName.substringAfterLast('/')
+			if (fileName.isEmpty()) return ""
+			val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+			val outFile = File(dir, fileName)
+			FileInputStream(src).use { input -> FileOutputStream(outFile).use { input.copyTo(it) } }
+			src.delete()
+			val mime = when {
+				fileName.endsWith(".zip") -> "application/zip"
+				fileName.endsWith(".html") -> "text/html"
+				else -> "text/plain"
+			}
+			@Suppress("DEPRECATION")
+			(ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager)
+				.addCompletedDownload(fileName, fileName, false, mime, outFile.absolutePath, outFile.length(), true)
+			fileName
+		} catch (e: Exception) {
+			File(ctx.filesDir, staged).delete()
+			""
+		}
+	}
+
 	private fun zipCharacterDir(charDir: File, out: ZipOutputStream) {
 		val charPrefix = "characters/${charDir.name}"
 		charDir.listFiles()?.forEach { file ->

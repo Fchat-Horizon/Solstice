@@ -31,7 +31,7 @@
     'read', 'getSize', 'readBytes', 'delete', 'write', 'writeBytes',
     'listDirectories', 'listFiles', 'ensureDirectory',
     'zipStart', 'zipAdd', 'zipFinish', 'appendBytes', 'rename',
-    'exportData', 'exportCrashLog', 'pickImportFile'
+    'exportData', 'exportCrashLog', 'saveExport', 'pickImportFile'
   ]);
 
   window.NativeLogs = make('nativeLogs', [
