@@ -48,6 +48,7 @@ import Connection from '../fchat/connection';
 import {appVersion, GeneralSettings, Logs, SettingsStore} from './filesystem';
 import Index from './Index.vue';
 import Notifications from './notifications';
+import {noteInterruptedImport} from './importTrace';
 import {sendNotifyConfig, clearConversationNotification} from './notifyConfig';
 import {EventBus, SelectConversationEvent} from '../chat/preview/event-bus';
 
@@ -263,6 +264,14 @@ function installDomGuards(): void {
 
 // Install the guards + error capture before the app mounts (new Index(...) below).
 if (document.documentElement.dataset.mobilePlatform === 'true') installResilience();
+// The Manage Data import runs in a detached Vue instance (mobile/AppExporterDialog.vue) that catches
+// its own failures, so nothing of them reaches Vue.config.errorHandler. Expose the same privacy-safe
+// recorder so an import failure still leaves a stack in the shareable diagnostic log.
+(window as any).__logCrash = logCrash; //tslint:disable-line:no-any
+// An import whose process was killed leaves a trace with no terminal marker. Mark it at the next
+// boot, which is the only place that failure shape can be observed at all.
+if (document.documentElement.dataset.mobilePlatform === 'true')
+    void noteInterruptedImport().then(found => { if (found) logDiag('import', 'previous run interrupted'); });
 
 // Background-disconnect diagnostics (see logDiag): record each JS boot and every foreground/background
 // transition. On iOS the app process is held alive by the audio keep-alive, but iOS can still

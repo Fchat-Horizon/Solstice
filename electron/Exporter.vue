@@ -1014,6 +1014,14 @@
                         }}
                       </button>
                     </div>
+                    <!-- Mobile only: the import runs in the WebView on the thread that paints
+                         it, so the button spinner alone cannot show that a long import is alive. -->
+                    <div
+                      v-if="isMobilePlatform && importProgress"
+                      class="form-text text-muted mt-2"
+                    >
+                      {{ importProgress }}
+                    </div>
                     <div v-if="importSummary" class="alert alert-success">
                       {{ importSummary }}
                     </div>
@@ -1476,6 +1484,8 @@
         importHiddenAvailable: false,
         importOverwrite: false,
         importInProgress: false,
+        // Mobile only (see the template): how far a long import has got.
+        importProgress: undefined as string | undefined,
         importSummary: undefined as string | undefined,
         importError: undefined as string | undefined,
         importZipPath: undefined as string | undefined,
