@@ -31,9 +31,6 @@
                         <select class="form-select form-select" id="theme" v-model="settings.theme">
                             <option v-for="theme in availableThemes" :value="theme">{{`${theme}`}}</option>
                         </select>
-                        <p>
-                            {{ settings.theme }}
-                        </p>
                     </div>
                     <div class="mb-3">
                         <label for="advanced"><input type="checkbox" id="advanced" v-model="showAdvanced"/> {{l('login.advanced')}}</label>
