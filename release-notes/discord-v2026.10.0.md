@@ -1,4 +1,4 @@
-**Solstice v2026.9.0 is out**
+**Solstice v2026.10.0 is out**
 
 Built on Horizon 2.4.0. The app can now pull your chat log history off Horizon on your computer, log exports work on both platforms, and a large import no longer freezes the app.
 
