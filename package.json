@@ -93,6 +93,8 @@
     "build:mobile:dist": "pnpm --filter solstice-mobile build:dist",
     "watch:mobile": "pnpm --filter solstice-mobile watch",
     "release": "release-it",
+    "release:notes:draft": "node scripts/release-notes.js draft",
+    "release:notes": "node scripts/release-notes.js publish",
     "lint": "pnpm prettier --write .",
     "check": "pnpm prettier --check .",
     "i18n:check": "node scripts/i18n-check.js",

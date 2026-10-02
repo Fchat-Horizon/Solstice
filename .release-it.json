@@ -2,7 +2,10 @@
   "git": {
     "commitMessage": "chore: release v${version}",
     "tagName": "v${version}",
-    "tagAnnotation": "Release v${version}"
+    "tagAnnotation": "Release v${version}",
+    "requireBranch": "development",
+    "requireCleanWorkingDir": true,
+    "push": true
   },
   "github": {
     "release": false
@@ -11,15 +14,16 @@
     "publish": false
   },
   "hooks": {
-    "after:bump": "node scripts/sync-electron-version.js ${version}"
-  },
-  "plugins": {
-    "@release-it/keep-a-changelog": {
-      "filename": "CHANGELOG.md",
-      "addUnreleased": true,
-      "strictLatest": false,
-      "addVersionUrl": true,
-      "head": "development"
-    }
+    "before:init": [
+      "pnpm typecheck",
+      "pnpm test",
+      "pnpm i18n:check",
+      "pnpm check"
+    ],
+    "after:bump": "node scripts/sync-electron-version.js ${version}",
+    "after:release": [
+      "git push fork HEAD --follow-tags",
+      "echo 'Tag pushed to origin and fork. Next: pnpm release:notes:draft, edit release-notes/v${version}.md, wait for CI, then pnpm release:notes. See docs/releasing.md.'"
+    ]
   }
 }

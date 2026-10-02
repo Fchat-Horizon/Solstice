@@ -4,6 +4,7 @@
 //   - electron/package.json  -> same version string
 //   - mobile/package.json     -> same version string
 //   - mobile/android/app/build.gradle -> versionName + incremented versionCode
+//   - mobile/ios/project.yml -> MARKETING_VERSION
 const fs = require('fs');
 const version = process.argv[2];
 if (!version) throw new Error('Usage: sync-electron-version.js <version>');
@@ -27,3 +28,16 @@ gradle = gradle.replace(
   (_, code) => `versionCode ${parseInt(code, 10) + 1}`
 );
 fs.writeFileSync(gradlePath, gradle);
+
+// iOS: set MARKETING_VERSION. CI stamps the shipped version per build
+// (<pkgVersion>.<run_number>), so this value is only what a local Xcode build
+// shows, but it should not be left reading the previous release.
+const projectPath = 'mobile/ios/project.yml';
+let project = fs.readFileSync(projectPath, 'utf8');
+if (!/MARKETING_VERSION:\s*"[^"]*"/.test(project))
+  throw new Error(`Could not find MARKETING_VERSION in ${projectPath}`);
+project = project.replace(
+  /MARKETING_VERSION:\s*"[^"]*"/,
+  `MARKETING_VERSION: "${version}"`
+);
+fs.writeFileSync(projectPath, project);
