@@ -29,6 +29,18 @@ That runs the local gate (`typecheck`, `test`, `i18n:check`, `check`) and refuse
 it fails, then bumps the version everywhere, commits `chore: release v<version>`, tags it, and
 pushes to both remotes, prompting before the commit, the tag and the push.
 
+The branch and the tag go as **separate pushes**, deliberately: a tag pushed in the same `git push`
+as a branch does not fire the `tags:` triggers, so `build.yml` and `ios.yml` never run and you get no
+draft release. If that ever happens anyway, the tag is already on the remotes, and re-pushing it is a
+no-op, so delete it and push it again on its own:
+
+```bash
+git push origin :refs/tags/v2026.10.0 && git push fork :refs/tags/v2026.10.0
+git push origin v2026.10.0 && git push fork v2026.10.0
+```
+
+That is safe only while nothing has been published against the tag.
+
 Pass flags straight after the script name, never after a `--` separator: pnpm swallows the flag and
 `release-it` then drops into interactive mode, which fails outside a terminal.
 
