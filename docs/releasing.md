@@ -44,7 +44,9 @@ pnpm release:notes:draft      # writes release-notes/v<version>.md
 ```
 
 The scaffold has the `Built on Horizon X.Y.Z` line (read from `chat/version.ts`) and one `**TODO.**`
-bullet per thing that landed since the last stable release. Rewrite every bullet in user-facing
+bullet per thing that landed since the last stable release. If anyone else's PRs were merged in that
+range it also scaffolds a `## Thanks` section naming them, because their work should not ship
+unattributed; say what each one did and note a first contribution as one. Rewrite every bullet in user-facing
 words: a **bold** plain-language lead-in, then full sentences saying what changed for the person
 using the app, no commit links. Write in the first person singular, because Solstice is
 solo-maintained: "I", never "we". No install-directions section, the asset list on the release page

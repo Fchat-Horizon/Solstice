@@ -62,6 +62,51 @@ function subjectsSince(tag) {
     .reverse();
 }
 
+// PRs merged in the range that someone else opened, so their work is credited
+// rather than quietly shipped. Best effort: it needs gh and the network, and a
+// release can be drafted without either.
+function externalCredits(tag) {
+  const mentioned = new Set(
+    [...git('log', '--format=%s', `${tag}..HEAD`).matchAll(/#(\d+)/g)].map(
+      m => m[1]
+    )
+  );
+  if (!mentioned.size) return [];
+  try {
+    // Issue numbers appear in subjects too; intersecting with the merged PR
+    // list drops them.
+    const me = execFileSync('gh', ['api', 'user', '-q', '.login'], {
+      encoding: 'utf8'
+    }).trim();
+    const prs = JSON.parse(
+      execFileSync(
+        'gh',
+        [
+          'pr',
+          'list',
+          '--state',
+          'merged',
+          '--limit',
+          '100',
+          '--json',
+          'number,author,title'
+        ],
+        { encoding: 'utf8' }
+      )
+    );
+    return prs
+      .filter(pr => mentioned.has(String(pr.number)) && pr.author.login !== me)
+      .map(pr => ({
+        number: pr.number,
+        author: pr.author.login,
+        title: pr.title
+      }));
+  } catch {
+    console.log('note: could not reach gh to look up contributors');
+    return [];
+  }
+}
+
 function notesPath(version) {
   return path.join(NOTES_DIR, `v${version}.md`);
 }
@@ -73,11 +118,22 @@ function draft(version) {
   const bullets = subjectsSince(prev)
     .map(s => `- **TODO.** ${s}\n`)
     .join('');
+  const credits = externalCredits(prev);
+  const thanks = credits.length
+    ? '\n## Thanks\n\n' +
+      credits
+        .map(
+          c =>
+            `- **@${c.author}** TODO for what, from "${c.title}" (#${c.number}).\n`
+        )
+        .join('')
+    : '';
   const body =
     `Built on Horizon ${horizonBase()}.\n\n` +
     `TODO one line saying what this release is about.\n\n` +
     `## Changes since ${prev}\n\n` +
-    bullets;
+    bullets +
+    thanks;
   fs.mkdirSync(NOTES_DIR, { recursive: true });
   fs.writeFileSync(file, body);
   console.log(
@@ -86,6 +142,10 @@ function draft(version) {
   console.log(
     'Rewrite every bullet for users, bold lead-in first, then: pnpm release:notes'
   );
+  if (credits.length)
+    console.log(
+      `${credits.length} PR(s) from other people are listed under Thanks; say what they did.`
+    );
 }
 
 // The Discord post is a near-mechanical transform of the release notes: bold
