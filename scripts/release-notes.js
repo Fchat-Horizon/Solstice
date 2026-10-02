@@ -121,10 +121,21 @@ function publish(version, dryRun) {
   // House rule, and easier to catch here than in review.
   if (body.includes('—')) fail(`${file} contains an em dash`);
 
-  const repo = /github\.com[/:]([^/]+\/[^/.]+)/.exec(
-    git('remote', 'get-url', 'origin')
-  );
-  if (!repo) fail('could not work out the GitHub repo from the origin remote');
+  // The tag is pushed to both remotes and each one's CI builds its own draft
+  // release, so both need the notes. Testers install from the fork.
+  const repos = ['origin', 'fork']
+    .map(remote => {
+      let url;
+      try {
+        url = git('remote', 'get-url', remote);
+      } catch {
+        return null;
+      }
+      const match = /github\.com[/:]([^/]+\/[^/.]+)/.exec(url);
+      return match && match[1];
+    })
+    .filter(Boolean);
+  if (!repos.length) fail('no GitHub origin or fork remote to publish to');
 
   // Written before touching GitHub, so a failed upload still leaves you the
   // post to look over.
@@ -144,18 +155,33 @@ function publish(version, dryRun) {
   }
 
   if (dryRun) {
-    console.log(`would set the body of v${version} from ${file}`);
+    for (const repo of repos)
+      console.log(`would set the body of ${repo} v${version} from ${file}`);
     return;
   }
-  execFileSync(
-    'gh',
-    ['release', 'edit', `v${version}`, '-R', repo[1], '--notes-file', file],
-    { stdio: 'inherit' }
-  );
-  console.log(`set the body of v${version} from ${file}`);
+  const failed = [];
+  for (const repo of repos) {
+    try {
+      execFileSync(
+        'gh',
+        ['release', 'edit', `v${version}`, '-R', repo, '--notes-file', file],
+        { stdio: 'inherit' }
+      );
+      console.log(`set the body of ${repo} v${version} from ${file}`);
+    } catch {
+      // Most likely that remote's build has not created the release yet.
+      failed.push(repo);
+    }
+  }
+  for (const repo of failed)
+    console.log(
+      `COULD NOT set the body of ${repo} v${version}; has its build finished?`
+    );
   console.log(
-    `The release is still a draft. Publish it when the assets look right: gh release edit v${version} -R ${repo[1]} --draft=false`
+    'The releases are still drafts. Publish them when the assets look right:'
   );
+  for (const repo of repos)
+    console.log(`  gh release edit v${version} -R ${repo} --draft=false`);
 }
 
 const args = process.argv.slice(2);

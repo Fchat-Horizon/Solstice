@@ -56,14 +56,17 @@ pnpm release:notes            # sets the release body, writes the Discord post
 pnpm release:notes --dry-run  # same, without touching GitHub
 ```
 
-This refuses to run while the notes still contain `TODO` or an em dash. It also writes
+This sets the body on both remotes' releases, because each remote's CI builds its own draft from the
+tag, and refuses to run while the notes still contain `TODO` or an em dash. If one remote's build has
+not finished yet it says so and leaves that one alone, so re-running is safe. It also writes
 `release-notes/discord-v<version>.md`, the announcement post in the shape the Discord channel
 expects, and warns when it is over Discord's 2000 character limit: trim it by hand, and a re-run
 will keep your trimmed version rather than regenerate it.
 
 ```bash
-# 4. Publish the draft when the assets look right.
+# 4. Publish both drafts when the assets look right.
 gh release edit v2026.10.0 -R Fchat-Horizon/Solstice --draft=false
+gh release edit v2026.10.0 -R Kannamoris/Solstice --draft=false
 ```
 
 Publishing matters for more than visibility on iOS: the public SideStore source is
