@@ -27,7 +27,10 @@ pnpm release 2026.10.0        # the explicit version; release-it does not guess 
 
 That runs the local gate (`typecheck`, `test`, `i18n:check`, `check`) and refuses to go on if any of
 it fails, then bumps the version everywhere, commits `chore: release v<version>`, tags it, and
-pushes to both remotes.
+pushes to both remotes, prompting before the commit, the tag and the push.
+
+Pass flags straight after the script name, never after a `--` separator: pnpm swallows the flag and
+`release-it` then drops into interactive mode, which fails outside a terminal.
 
 Version-bearing files, all handled by `scripts/sync-electron-version.js` as part of the bump:
 `package.json`, `electron/package.json`, `mobile/package.json`,
@@ -50,7 +53,7 @@ covers that. No em dashes.
 ```bash
 # 3. Once CI has attached the APKs and the IPA to the draft release:
 pnpm release:notes            # sets the release body, writes the Discord post
-pnpm release:notes -- --dry-run   # same, without touching GitHub
+pnpm release:notes --dry-run  # same, without touching GitHub
 ```
 
 This refuses to run while the notes still contain `TODO` or an em dash. It also writes
