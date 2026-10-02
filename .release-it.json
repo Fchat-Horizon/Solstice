@@ -3,6 +3,7 @@
     "commitMessage": "chore: release v${version}",
     "tagName": "v${version}",
     "tagAnnotation": "Release v${version}",
+    "tagMatch": "v[0-9][0-9][0-9][0-9].[0-9]*.[0-9]*",
     "requireBranch": "development",
     "requireCleanWorkingDir": true,
     "push": true
