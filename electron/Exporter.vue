@@ -1505,6 +1505,7 @@
         syncPayloadCopied: false,
         syncAddressText: undefined as string | undefined,
         syncPeerName: undefined as string | undefined,
+        syncBatches: 0,
         syncSummary: undefined as string | undefined,
         syncError: undefined as string | undefined,
         closePending: false,
@@ -1911,7 +1912,10 @@
         }
       },
       async openAutoBackupDir(): Promise<void> {
-        ipcRenderer.send('open-dir', this.settings.logDirectory);
+        ipcRenderer.send(
+          'open-dir',
+          this.settings.autoBackupDirectory || this.defaultBackupDir
+        );
       },
       async refreshAutoBackups(): Promise<void> {
         try {

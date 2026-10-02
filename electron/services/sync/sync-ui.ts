@@ -18,7 +18,7 @@ import { clipboard, ipcRenderer } from 'electron';
 import log from 'electron-log';
 import * as path from 'path';
 import QRCode from 'qrcode';
-import l from '../../../chat/localize';
+import l, { lp } from '../../../chat/localize';
 import type { ExporterVm } from '../exporter-vm';
 import { LogSyncServer } from './server';
 import { acquireDataSession } from '../data-session';
@@ -40,6 +40,7 @@ function resetSyncViewState(vm: ExporterVm): void {
   vm.syncPayloadCopied = false;
   vm.syncAddressText = undefined;
   vm.syncPeerName = undefined;
+  vm.syncBatches = 0;
 }
 
 function describeError(code: string | undefined): string {
@@ -63,22 +64,30 @@ function buildSummary(server: LogSyncServer): string {
   if (received !== undefined)
     parts.push(
       l('sync.summary.received', {
-        messages: received.messagesAdded,
-        conversations:
-          received.conversationsUpdated + received.conversationsCreated,
-        created: received.conversationsCreated
+        messages: lp('sync.summary.received.messages', received.messagesAdded),
+        conversations: lp(
+          'sync.summary.received.conversations',
+          received.conversationsUpdated + received.conversationsCreated
+        ),
+        created: lp(
+          'sync.summary.received.created',
+          received.conversationsCreated
+        )
       })
     );
   if (sent !== undefined)
     parts.push(
       l('sync.summary.sent', {
-        conversations: sent.conversations,
-        characters: sent.characters.length
+        conversations: lp(
+          'sync.summary.sent.conversations',
+          sent.conversations
+        ),
+        characters: lp('sync.summary.sent.characters', sent.characters.length)
       })
     );
   if (received && received.conversationsSkipped > 0)
     parts.push(
-      l('sync.summary.damaged', {
+      lp('sync.summary.damaged', received.conversationsSkipped, {
         conversations: received.conversationsSkipped
       })
     );
@@ -90,6 +99,9 @@ function applyServerState(vm: ExporterVm, server: LogSyncServer): void {
   if (server !== activeSession?.server) return;
   vm.syncState = server.state;
   vm.syncPeerName = server.peerName;
+  vm.syncBatches = server.batching
+    ? server.sentBatches + server.receivedBatches
+    : 0;
   switch (server.state) {
     case 'finished':
       vm.syncSummary = buildSummary(server);
@@ -233,7 +245,11 @@ export function describeSyncState(vm: ExporterVm): string {
     case 'waiting':
       return l('sync.state.waiting');
     case 'paired':
-      return l('sync.state.paired', { device: peer });
+      // A batching peer returns the session to paired between every transfer.
+      // Saying "connected" each time would flap once per batch.
+      return vm.syncBatches > 0
+        ? lp('sync.state.batching', vm.syncBatches, { device: peer })
+        : l('sync.state.paired', { device: peer });
     case 'sending':
       return l('sync.state.sending', { device: peer });
     case 'receiving':

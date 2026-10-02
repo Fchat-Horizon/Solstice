@@ -148,6 +148,9 @@ const config = {
       // Desktop Device Sync server (worker_threads/http). Mobile syncs as a client
       // via mobile/sync/; the desktop server must not be bundled into the WebView.
       [path.resolve(__dirname, '../electron/services/sync/sync-ui')]: path.join(__dirname, 'shims/sync-ui.js'),
+      // Desktop ZIP export (Node streams + zip.js's native entry). Mobile exports
+      // natively from AppExporterDialog, so keep it out of the WebView bundle.
+      [path.resolve(__dirname, '../electron/services/exporter/export-zip')]: path.join(__dirname, 'shims/export-zip.js'),
     },
     fallback: {
       fs: path.join(__dirname, 'shims/fs.js'),
