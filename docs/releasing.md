@@ -86,4 +86,12 @@ writing but are addressed to testers rather than users.
   delete the draft, delete the tag on both remotes, and re-tag when the fix is in. Never re-point a
   tag that a published release used.
 - **The fork push failed** (it runs after the origin push): `git push fork development --follow-tags`.
-- **Dry run anything**: `pnpm release 2026.10.0 --dry-run` prints every command without running it.
+- **Dry run anything**: `pnpm release 2026.10.0 --dry-run` prints every command without running it,
+  with one exception worth knowing: the version bump itself (`npm version`) runs for real, so a dry
+  run leaves `package.json` modified. Undo it with `git checkout package.json`. To see only what the
+  next version would be, `pnpm release --release-version` prints it and touches nothing (it does run
+  the gate first).
+- **Horizon's tags live in this repo too** and are reachable from `development`, so anything reading
+  "the last tag" has to filter for the CalVer shape. `release-it` does, via `git.tagMatch`, and
+  `scripts/release-notes.js` does when it looks for the previous release; a hand-rolled
+  `git describe --tags` will not.
