@@ -4,11 +4,11 @@ Built on Horizon 2.4.0. The app can now pull your chat log history off Horizon o
 
 What changed since 2026.6.4:
 
-- **Log syncing with Horizon.** Copy your chat log history onto your phone over your local network. In Horizon, open "Manage Data" and choose "Sync with Solstice", then scan the QR code in the app. The transfer runs device to device and your existing logs are merged, not overwritten. Needs Horizon 2.4.0 or later.
+- **Log syncing with Horizon.** Copy your chat log history onto your phone over your local network. In Horizon, open "Manage Data", choose "Device Sync" and start a session, then scan the QR code in the app. The transfer runs device to device and your existing logs are merged, not overwritten. Needs Horizon 2.4.0 or later.
 - **Syncing copes with big log folders.** Logs transfer one bounded batch at a time, so neither device holds the whole set in memory and folders that were too big now go through.
 - **Log exports go through the app.** From the log viewer they did nothing on iOS and only partly worked on Android. The export now hands the file to the app: Downloads on Android, the share sheet on iOS.
 - **A large import no longer freezes the app.** A desktop backup used to lock everything up until it finished, 85 seconds for a 296 MB one. It now runs in small batches and stays responsive, and a failure writes a trace you can hand over.
-- **Manage Data survives signing out (#17).** Its tabs no longer freeze and its dialogs open again after logging out and back in.
+- **Manage Data survives signing out (#17).** Its tabs no longer freeze and its dialogs open again after a logout.
 - **iOS builds against the current SDK (#20).** Rebuilt for the iOS 26 and Xcode 27 SDK. iOS 15 is the minimum supported version.
 - **Two iOS install channels.** The public SideStore source tracks the newest release; the test channel lists itself as "Solstice (Test)".
 - **Thanks to @FatCatClient** for the sign-in screen cleanup and the login theme fix, their first contributions.
