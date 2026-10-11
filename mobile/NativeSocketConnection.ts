@@ -45,46 +45,32 @@ export default class NativeSocketConnection implements WebSocketConnection {
     void NativeSocket.connect(Socket.host);
   }
 
-  static deliver(type: string, payload: unknown, receivedAt?: number): void {
-    NativeSocketConnection.current?.handle(type, payload, receivedAt);
+  static deliver(type: string, payload: unknown): void {
+    NativeSocketConnection.current?.handle(type, payload);
   }
 
-  private handle(type: string, payload: unknown, receivedAt?: number): void {
+  private handle(type: string, payload: unknown): void {
     switch (type) {
       case 'open':
         this.state = WebSocketConnection.ReadyState.OPEN;
         if (this.openHandler !== undefined) this.openHandler();
         break;
       case 'message':
-        if (this.messageHandler !== undefined) {
-          const handler = this.messageHandler;
-          const text = String(payload);
-          // Present for replayed (buffered) frames so they keep their real arrival time.
-          const at = typeof receivedAt === 'number' ? receivedAt : undefined;
-          // Replayed frames were already alerted natively while backgrounded; suppress the JS
-          // notification path for them so reopening doesn't re-fire a burst of sounds/haptics.
-          // lastHandler serializes handling, so exactly one frame runs at a time and the flag
-          // brackets only this frame (live frames have no receivedAt and are untouched).
-          const run = async (): Promise<void> => {
-            const notifications = core.notifications as { replaying?: boolean };
-            const replay = at !== undefined;
-            if (replay) notifications.replaying = true;
-            try {
-              await handler(text, at);
-            } finally {
-              if (replay) {
-                // Hold suppression through one microtask so a notification/sound the handler
-                // scheduled (rather than awaited) is still covered. Safe because lastHandler
-                // serializes handling: the next frame can't run until this run settles, so a live
-                // frame never overlaps the suppressed window.
-                await Promise.resolve();
-                notifications.replaying = false;
-              }
-            }
-          };
-          this.lastHandler = this.lastHandler.then(run, run);
-        }
+        this.enqueue(String(payload));
         break;
+      case 'batch':
+        // Frames native buffered while backgrounded, in arrival order, each with its arrival time.
+        for (const [text, at] of payload as [string, number][])
+          this.enqueue(text, at);
+        break;
+      case 'resync': {
+        // Native's background buffer overflowed and dropped presence frames, so the online list is
+        // stale. Once the replayed backlog is handled, close the socket: the Connection reconnects,
+        // and the fresh login resends the full online list.
+        const resync = async (): Promise<void> => this.close();
+        this.lastHandler = this.lastHandler.then(resync, resync);
+        break;
+      }
       case 'close': {
         this.state = WebSocketConnection.ReadyState.CLOSED;
         const c = (payload as NativeClose) || {
@@ -110,6 +96,35 @@ export default class NativeSocketConnection implements WebSocketConnection {
           );
         break;
     }
+  }
+
+  // Queue a frame behind the ones before it. `receivedAt` (ms) is present only for frames replayed
+  // from native's background buffer, so they keep their real arrival time.
+  private enqueue(text: string, receivedAt?: number): void {
+    if (this.messageHandler === undefined) return;
+    const handler = this.messageHandler;
+    // Replayed frames were already alerted natively while backgrounded; suppress the JS
+    // notification path for them so reopening doesn't re-fire a burst of sounds/haptics.
+    // lastHandler serializes handling, so exactly one frame runs at a time and the flag
+    // brackets only this frame (live frames have no receivedAt and are untouched).
+    const run = async (): Promise<void> => {
+      const notifications = core.notifications as { replaying?: boolean };
+      const replay = receivedAt !== undefined;
+      if (replay) notifications.replaying = true;
+      try {
+        await handler(text, receivedAt);
+      } finally {
+        if (replay) {
+          // Hold suppression through one microtask so a notification/sound the handler
+          // scheduled (rather than awaited) is still covered. Safe because lastHandler
+          // serializes handling: the next frame can't run until this run settles, so a live
+          // frame never overlaps the suppressed window.
+          await Promise.resolve();
+          notifications.replaying = false;
+        }
+      }
+    };
+    this.lastHandler = this.lastHandler.then(run, run);
   }
 
   get readyState(): WebSocketConnection.ReadyState {
@@ -144,10 +159,8 @@ export default class NativeSocketConnection implements WebSocketConnection {
   }
 }
 
-// Native (NativeSocket.swift) pushes socket events here. `receivedAt` (ms) is present only for
-// replayed frames so they keep their real arrival time.
+// Native (NativeSocket.swift) pushes socket events here.
 (window as any).__nativeSocketEvent = ( //tslint:disable-line:no-any
   type: string,
-  payload: unknown,
-  receivedAt?: number
-): void => NativeSocketConnection.deliver(type, payload, receivedAt);
+  payload: unknown
+): void => NativeSocketConnection.deliver(type, payload);
