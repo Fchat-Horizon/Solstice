@@ -26,3 +26,30 @@ jobs:
 
       - name: Run log sync unit and integration tests
         run: pnpm test
+
+  swift-syntax:
+    name: Swift syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Catches syntax damage in the iOS sources before a macOS runner is spent on it: the
+      # ios.yml build costs ~15 minutes, and a stray brace does not deserve one. This is a
+      # PARSE ONLY check. UIKit and WebKit do not exist on Linux, so nothing here is
+      # typechecked: a call to a method that does not exist, or with the wrong signature,
+      # passes this and can only be caught by the real build. Treat a green tick as "it is
+      # well-formed Swift", never as "it compiles".
+      - name: Parse every Swift source
+        run: |
+          if ! command -v swiftc >/dev/null; then
+            echo "::error::swiftc is not on this runner image; the iOS syntax gate cannot run."
+            exit 1
+          fi
+          swiftc --version
+          mapfile -t sources < <(find mobile/ios -name '*.swift' -print | sort)
+          if [ "${#sources[@]}" -eq 0 ]; then
+            echo "::error::no Swift sources found under mobile/ios"
+            exit 1
+          fi
+          printf 'parsing %d files\n' "${#sources[@]}"
+          swiftc -parse "${sources[@]}"
