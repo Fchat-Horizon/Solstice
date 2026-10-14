@@ -179,7 +179,7 @@
                 }
             },
             openProfileInBrowser(): void {
-                window.location.href = `profile://${(this as any).profileName}`;
+                window.location.href = `profile://${(this as any).profileName.replace(/ /g, '%20')}`;
             },
         },
         async created(): Promise<void> {
