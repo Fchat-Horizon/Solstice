@@ -50,8 +50,11 @@
         :class="{ 'ms-3': !isMobile }"
         v-if="generalSettings"
       >
+        <!-- flex-shrink-0: with the global `* { min-height: 0 }` (scss/_core.scss) this header would
+             otherwise shrink below its content to make room for the full-height scroll area below,
+             which then overlaps the mode tabs and the notice. -->
         <div
-          class="mb-3"
+          class="mb-3 flex-shrink-0"
           v-if="
             selectedTab !== 'app.general' &&
             selectedTab !== 'app.look' &&
