@@ -605,7 +605,9 @@
                           v-model="character.selected"
                         />
                         <span class="form-check-label">{{
-                          character.name
+                          character.name === '_'
+                            ? l('settings.export.globalSettings')
+                            : character.name
                         }}</span>
                       </label>
                       <div
@@ -1280,7 +1282,10 @@
                   >
                     {{ l('sync.betaInfo') }}
                   </div>
-                  <p class="text-muted">{{ l('sync.description') }}</p>
+                  <p class="text-muted" v-if="!syncActive">
+                    {{ l('sync.description') }}
+                  </p>
+
                   <div
                     v-if="anyCharactersConnected"
                     class="alert alert-warning"
@@ -1357,6 +1362,17 @@
                             "
                           ></i>
                         </button>
+                      </div>
+                      <div v-if="syncState === 'waiting'">
+                        <p class="text-muted">
+                          {{ l('sync.connectionHelp') }}
+                        </p>
+                        <ul>
+                          <li>{{ l('sync.connectionHelp.firewall') }}</li>
+                          <li>{{ l('sync.connectionHelp.network') }}</li>
+                          <li>{{ l('sync.connectionHelp.ipAddress') }}</li>
+                          <li>{{ l('sync.connectionHelp.vpn') }}</li>
+                        </ul>
                       </div>
                     </div>
                     <button
@@ -2049,6 +2065,7 @@
 
           return {
             ['platform-' + this.platform]: true,
+            horizonHighContrast: this.settings?.horizonHighContrast || false,
             disableWindowsHighContrast:
               this.settings?.risingDisableWindowsHighContrast || false
           };

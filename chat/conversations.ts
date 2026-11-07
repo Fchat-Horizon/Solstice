@@ -17,7 +17,8 @@ import {
   isAction,
   isCommand,
   isWarn,
-  parse as parseCommand
+  parse as parseCommand,
+  indentedCommandName
 } from './slash_commands';
 import MessageType = Interfaces.Message.Type;
 import { EventBus } from './preview/event-bus';
@@ -86,6 +87,9 @@ abstract class Conversation implements Interfaces.Conversation {
   protected allMessages: Interfaces.Message[] = [];
   readonly reportMessages: Interfaces.Message[] = [];
   private lastSent = '';
+  // text of the last send() that was blocked for having spaces before a command,
+  // so the next Enter on that exact text goes through untouched
+  private spacedCommandWarning = '';
   adManager: AdManager;
   cacheActive = false;
   protected cacheInterval: ReturnType<typeof setInterval> | undefined;
@@ -149,6 +153,18 @@ abstract class Conversation implements Interfaces.Conversation {
 
   async send(): Promise<void> {
     if (this.enteredText.length === 0) return;
+
+    const spaced = indentedCommandName(this.enteredText);
+    if (spaced !== undefined) {
+      if (this.spacedCommandWarning !== this.enteredText) {
+        this.spacedCommandWarning = this.enteredText;
+        this.errorText = l('commands.spacedCommand', { command: spaced });
+        return;
+      }
+      // warning acknowledged, send it as the literal message it is
+      this.spacedCommandWarning = '';
+      this.errorText = '';
+    }
 
     if (isCommand(this.enteredText)) {
       const parsed = parseCommand(this.enteredText, this.context);
@@ -248,7 +264,9 @@ abstract class Conversation implements Interfaces.Conversation {
       shouldLog = true;
     } else {
       // Default: follow global message setting
-      shouldLog = core.state.settings.logMessages;
+      shouldLog = isChannel(this)
+        ? core.state.settings.horizonLogChannels
+        : core.state.settings.logMessages;
     }
 
     if (shouldLog) {
@@ -441,8 +459,7 @@ class PrivateConversation
       );
       this.safeAddMessage(message);
 
-      if (core.state.settings.logMessages)
-        await core.logs.logMessage(this, message);
+      await this.logMessage(message, false);
     });
   }
 
@@ -819,7 +836,7 @@ class State implements Interfaces.State {
   navigationHistoryIndex: number = -1;
   private isNavigatingHistory: boolean = false;
 
-  get hasNew(): number {
+  get newCount(): number {
     return (
       this.privateConversations.reduce(
         (sum, item) => sum + item.unreadCount,
@@ -1178,19 +1195,17 @@ export async function testSmartFilterForPrivateMessage(
         core.connection.send('PRI', message);
         core.cache.markLastPostTime();
 
-        if (core.state.settings.logMessages) {
-          const logMessage = createMessage(
-            Interfaces.Message.Type.Message,
-            core.characters.ownCharacter,
-            message.message,
-            new Date()
-          );
+        const logMessage = createMessage(
+          Interfaces.Message.Type.Message,
+          core.characters.ownCharacter,
+          message.message,
+          new Date()
+        );
 
-          await withNeutralVisibilityPrivateConversation(fromChar, async p => {
-            // core.logs.logMessage(p, logMessage)
-            await p.addMessage(logMessage);
-          });
-        }
+        await withNeutralVisibilityPrivateConversation(fromChar, async p => {
+          // core.logs.logMessage(p, logMessage)
+          await p.addMessage(logMessage);
+        });
       } else {
         const message = {
           recipient: fromChar.name,
@@ -1205,19 +1220,17 @@ export async function testSmartFilterForPrivateMessage(
         core.connection.send('PRI', message);
         core.cache.markLastPostTime();
 
-        if (core.state.settings.logMessages) {
-          const logMessage = createMessage(
-            Interfaces.Message.Type.Message,
-            core.characters.ownCharacter,
-            message.message,
-            new Date()
-          );
+        const logMessage = createMessage(
+          Interfaces.Message.Type.Message,
+          core.characters.ownCharacter,
+          message.message,
+          new Date()
+        );
 
-          await withNeutralVisibilityPrivateConversation(fromChar, async p => {
-            // core.logs.logMessage(p, logMessage)
-            await p.addMessage(logMessage);
-          });
-        }
+        await withNeutralVisibilityPrivateConversation(fromChar, async p => {
+          // core.logs.logMessage(p, logMessage)
+          await p.addMessage(logMessage);
+        });
       }
     });
   }
@@ -1341,6 +1354,8 @@ export default function (this: any): Interfaces.State {
     await state.reloadSettings();
   });
   connection.onEvent('connected', isReconnect => {
+    state.navigationHistory = [state.selectedConversation];
+    state.navigationHistoryIndex = 0;
     if (isReconnect) return;
     for (const item of state.pinned.private)
       state.getPrivate(core.characters.get(item));
@@ -1354,6 +1369,8 @@ export default function (this: any): Interfaces.State {
   connection.onEvent('closed', () => {
     state.pinnedCleanupArmed = false;
     clearTimeout(state.pinnedCleanupTimer);
+    state.navigationHistory = [];
+    state.navigationHistoryIndex = 0;
   });
   core.channels.onEvent(async (type, channel, member) => {
     if (type === 'join')
@@ -1462,9 +1479,20 @@ export default function (this: any): Interfaces.State {
     const words = conversation.settings.highlightWords.slice();
     const watchedCharacters =
       conversation.settings.horizonHighlightUsers.slice();
-    if (conversation.settings.defaultHighlights)
-      words.push(...core.state.settings.highlightWords);
-    watchedCharacters.push(...core.state.settings.horizonHighlightUsers);
+    if (conversation.settings.defaultHighlights) {
+      const globalHighlightWords = core.state.globalSettings.highlightWords;
+      const characterHighlightWords =
+        core.state.characterSettings.highlightWords ?? [];
+      words.push(...globalHighlightWords, ...characterHighlightWords);
+    }
+    const globalWatchedCharacters =
+      core.state.globalSettings.horizonHighlightUsers;
+    const characterWatchedCharacters =
+      core.state.characterSettings.horizonHighlightUsers ?? [];
+    watchedCharacters.push(
+      ...globalWatchedCharacters,
+      ...characterWatchedCharacters
+    );
     if (
       (conversation.settings.highlight === Interfaces.Setting.Default &&
         core.state.settings.highlight) ||

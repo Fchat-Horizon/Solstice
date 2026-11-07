@@ -298,6 +298,7 @@
     </modal>
 
     <logs ref="logsDialog"></logs>
+    <settings-view ref="settingsView"> </settings-view>
     <ui-test ref="uiTestDialog" v-if="isDevMode"> </ui-test>
 
     <toast
@@ -310,20 +311,19 @@
 </template>
 
 <script lang="ts">
-  import Axios from 'axios';
   import * as electron from 'electron';
   import * as remote from '@electron/remote';
   import settings from 'electron-settings';
   import log from 'electron-log'; //tslint:disable-line:match-default-export-name
   import * as fs from 'fs';
   import * as path from 'path';
-  import * as qs from 'querystring';
   import Vue from 'vue';
   import Chat from '../chat/Chat.vue';
   import { characterImage, Settings } from '../chat/common';
   import core from '../chat/core';
   import l from '../chat/localize';
   import Logs from '../chat/Logs.vue';
+  import SettingsView from '../chat/SettingsView.vue';
   import UITest from '../chat/UITest.vue';
   import Socket from '../chat/WebSocket';
   import Modal from '../components/Modal.vue';
@@ -336,10 +336,11 @@
   } from '../learn/dictionary/WordDefinition.vue';
   import ProfileAnalysis from '../learn/recommend/ProfileAnalysis.vue';
   import { defaultHost, GeneralSettings } from './common';
+  import { requestApiTicket, sharedTicketProvider } from './api-ticket';
   import { fixLogs } from './filesystem';
   import { SlimcatImporter } from './services';
   import _ from 'lodash';
-  import { EventBus } from '../chat/preview/event-bus';
+  import { EventBus, OpenSettingsMenuEvent } from '../chat/preview/event-bus';
 
   import BBCodeTester from '../bbcode/Tester.vue';
   import { BBCodeView } from '../bbcode/view';
@@ -409,6 +410,7 @@
       toast: Toast,
       characterPage: CharacterPage,
       logs: Logs,
+      settingsView: SettingsView,
       'ui-test': UITest,
       'word-definition': WordDefinition,
       BBCodeTester: BBCodeTester,
@@ -629,6 +631,10 @@
         (this.$refs['fixLogsModal'] as InstanceType<typeof Modal>).show();
       });
 
+      electron.ipcRenderer.on('settings-menu', () => {
+        this.openSettingsMenu({ mode: 'global' });
+      });
+
       electron.ipcRenderer.on('ui-test', () => {
         this.showUiTest();
       });
@@ -676,6 +682,7 @@
     },
     beforeDestroy(): void {
       this.stopThemeWatch();
+      EventBus.$off('open-settings-menu', this.openSettingsMenu);
       if (this.autoBackupStatusListener)
         electron.ipcRenderer.removeListener(
           'auto-backup-status',
@@ -683,6 +690,12 @@
         );
     },
     methods: {
+      openSettingsMenu(data: OpenSettingsMenuEvent): void {
+        (this.$refs['settingsView'] as InstanceType<typeof SettingsView>).open(
+          data.mode
+        );
+      },
+
       async startAndUpgradeCache(): Promise<void> {
         log.debug('init.chat.cache.start');
 
@@ -739,25 +752,11 @@
 
           core.siteSession.setCredentials(this.settings.account, this.password);
 
-          const data = <
-            {
-              ticket?: string;
-              error: string;
-              characters: { [key: string]: number };
-              default_character: number;
-            }
-          >(
-            await Axios.post(
-              'https://www.f-list.net/json/getApiTicket.php',
-              qs.stringify({
-                account: this.settings.account,
-                password: this.password,
-                no_friends: true,
-                no_bookmarks: true,
-                new_character_list: true
-              })
-            )
-          ).data;
+          const data = await requestApiTicket(
+            this.settings.account,
+            this.password,
+            { fresh: true }
+          );
           if (data.error !== '') {
             this.error = data.error;
             return;
@@ -816,8 +815,9 @@
           });
           core.connection.onEvent('connected', () => {
             core.watch(
-              () => core.conversations.hasNew,
-              newValue => parent.send('has-new', webContents.id, newValue)
+              () => core.conversations.newCount,
+              newValue =>
+                parent.send('new-message-count', webContents.id, newValue)
             );
 
             EventBus.$on('word-definition', (data: any) => {
@@ -829,6 +829,7 @@
                 ).show();
               }
             });
+            EventBus.$on('open-settings-menu', this.openSettingsMenu);
           });
           core.connection.onEvent('closed', () => {
             if (this.character === undefined) return;
@@ -836,7 +837,10 @@
             this.character = undefined;
             parent.send('disconnect', webContents.id);
           });
-          core.connection.setCredentials(this.settings.account, this.password);
+          core.connection.setCredentials(
+            this.settings.account,
+            sharedTicketProvider(this.settings.account, this.password)
+          );
           this.characters = Object.keys(data.characters)
             .map(name => ({ name, id: data.characters[name], deleted: false }))
             .sort((x, y) => x.name.localeCompare(y.name));
@@ -940,10 +944,10 @@
       },
       getThemeClass(): Record<string, boolean> {
         // console.log('getThemeClassIndex', core.state.generalSettings?.risingDisableWindowsHighContrast);
-
+        let platform = process.platform;
         try {
           // Hack!
-          if (process.platform === 'win32') {
+          if (platform === 'win32') {
             if (core.state.generalSettings?.risingDisableWindowsHighContrast) {
               document
                 .querySelector('html')
@@ -958,16 +962,24 @@
           return {
             [`theme-${core.state.settings?.risingCharacterTheme || this.getSyncedTheme()}`]: true,
             [`${this.getSyncedTheme()}`]: true,
-            colorblindMode: core.state.settings?.risingColorblindMode || false,
+            [`platform-${platform}`]: true,
+            colorblindMode: this.isColorblindModeActive(),
+            ...(this.isColorblindModeActive()
+              ? {
+                  [`colorblind-${core.state.generalSettings!.horizonColorblindMode}`]: true
+                }
+              : {}),
             vanillaTextColors: this.settings.horizonVanillaTextColors,
             vanillaGenderColors: this.settings.horizonVanillaGenderColors,
             ['force-reduced-motion']: this.settings.reducedMotion || false,
+            horizonHighContrast: this.settings.horizonHighContrast || false,
             bbcodeGlow: this.settings.horizonBbcodeGlow,
             disableWindowsHighContrast:
               this.settings.risingDisableWindowsHighContrast || false
           };
         } catch (err) {
           return {
+            [`platform-${platform}`]: true,
             [`theme-${this.getSyncedTheme()}`]: true,
 
             ['force-reduced-motion']: this.settings.reducedMotion || false,
@@ -975,6 +987,10 @@
               this.settings.risingDisableWindowsHighContrast || false
           };
         }
+      },
+      isColorblindModeActive(): boolean {
+        const mode = core.state.generalSettings?.horizonColorblindMode;
+        return mode !== undefined && mode !== 'none';
       },
       nextProfile(): void {
         if (!this.nextProfileAvailable()) {

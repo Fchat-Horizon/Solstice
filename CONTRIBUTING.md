@@ -38,6 +38,8 @@ Solstice is written primarily in _Vue_, _Typescript_, and _Javascript_, wrapped 
 
 For Android builds you'll additionally need **JDK 17+** and the **Android SDK** (API 35 platform). [Android Studio](https://developer.android.com/studio) is the easiest way to get the SDK.
 
+You should use Node.js **v24.22.1** (see [.nvmrc](./.nvmrc)).
+
 ### Setting up your development enviroment
 
 In short, you can run the following commands:

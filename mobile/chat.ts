@@ -47,6 +47,7 @@ import Socket from '../chat/WebSocket';
 import NativeSocketConnection from './NativeSocketConnection';
 import Connection from '../fchat/connection';
 import {appVersion, GeneralSettings, Logs, SettingsStore} from './filesystem';
+import MobilePlatformService from './platform';
 import Index from './Index.vue';
 import Notifications from './notifications';
 import {noteInterruptedImport} from './importTrace';
@@ -373,7 +374,11 @@ const soundThemeContext = (require as any).context('../chat/sound-themes', true,
 // this runs, so it is a reliable iOS check.
 const SocketProvider = (window as any).NativeSocket !== undefined ? NativeSocketConnection : Socket; //tslint:disable-line:no-any
 const connection = new Connection('Solstice (Mobile)', appVersion, SocketProvider);
-initCore(connection, new GeneralSettings() as any, Logs, SettingsStore, Notifications);
+// Since Horizon 2.5 core init is async (it loads the global settings stored under '_') and takes the
+// platform services the settings menu saves through. Everything below that only registers handlers can
+// run straight away; the Vue root waits for it at the bottom of this file, as electron/chat.ts does.
+const coreReady = initCore(connection, new GeneralSettings() as any, Logs, SettingsStore, Notifications, //tslint:disable-line:no-any
+    new MobilePlatformService());
 
 // Background-disconnect diagnostics (see logDiag): log the connection lifecycle so the exported log
 // shows how often, and how, the socket drops. `closed (unexpected)` is an unclean close the JS
@@ -425,6 +430,10 @@ const adCoordinator = new AdCoordinatorHost();
 ipcMain.on('request-send-ad', (event: any, adId: string) => //tslint:disable-line:no-any
     adCoordinator.processAdRequest(event, adId));
 
-new Index({ //tslint:disable-line:no-unused-expression
-    el: '#app'
+// Mount even if init failed (an unreadable '_/settings', say): a blank WebView gives the user nothing to
+// act on, while the mounted app can still log in, export data and save the error log recorded here.
+coreReady.catch((e: unknown) => logCrash('core.init', e)).then(() => {
+    new Index({ //tslint:disable-line:no-unused-expression
+        el: '#app'
+    });
 });

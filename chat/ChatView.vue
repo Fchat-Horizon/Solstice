@@ -78,7 +78,7 @@
               role="button"
               class="userInfo-button-item btn btn-outline-secondary"
               :title="l('settings.character')"
-              @click.prevent="showSettings()"
+              @click.prevent="openCharacterSettings()"
             >
               <i class="fa-solid fa-user-gear fa-fw"></i>
             </button>
@@ -142,7 +142,7 @@
             @click.prevent="showQuickJump()"
             :title="l('quickJump.action')"
             class="btn btn-link"
-            ><span class="fas fa-fw fa-shuffle"></span
+            ><span class="fas fa-fw fa-up-down"></span
           ></a>
         </div>
         <div class="list-group conversation-nav" ref="privateConversations">
@@ -401,7 +401,6 @@
     <character-search ref="searchDialog"></character-search>
     <adLauncher ref="adLauncher"></adLauncher>
     <adCenter ref="adCenter"></adCenter>
-    <settings ref="settingsDialog"></settings>
     <report-dialog ref="reportDialog"></report-dialog>
     <user-menu
       ref="userMenu"
@@ -453,7 +452,6 @@
   import PmPartnerAdder from './PmPartnerAdder.vue';
   import RecentConversations from './RecentConversations.vue';
   import ReportDialog from './ReportDialog.vue';
-  import SettingsView from './SettingsView.vue';
   import Sidebar from './Sidebar.vue';
   import StatusSwitcher from './StatusSwitcher.vue';
   import { getStatusIcon } from './UserView.vue';
@@ -472,6 +470,7 @@
   import CustomDialog from '../components/custom_dialog';
   import Modal from '../components/Modal.vue';
   import QuickJump from './QuickJump.vue';
+  import { EventBus } from './preview/event-bus';
   import { group, log } from 'node:console';
 
   const unreadClasses = {
@@ -494,7 +493,6 @@
       channels: ChannelList,
       'status-switcher': StatusSwitcher,
       'character-search': CharacterSearch,
-      settings: SettingsView,
       conversation: ConversationView,
       'report-dialog': ReportDialog,
       sidebar: Sidebar,
@@ -755,6 +753,10 @@
       window.removeEventListener('mouseup', this.mouseButtonListener);
     },
     methods: {
+      openCharacterSettings(): void {
+        EventBus.$emit('open-settings-menu', { mode: 'character' });
+      },
+
       onMouseButton(e: MouseEvent): void {
         // Mouse button 3 = back, 4 = forward
         const navigated =
@@ -1004,10 +1006,6 @@
       logOut(): void {
         if (Dialog.confirmDialog(l('chat.confirmLeave')))
           core.connection.close();
-      },
-
-      showSettings(): void {
-        (<SettingsView>this.$refs['settingsDialog']).show();
       },
 
       showSearch(): void {
@@ -1313,9 +1311,6 @@
           : unreadClasses[conversation.unread];
       },
 
-      isColorblindModeActive(): boolean {
-        return core.state.settings.risingColorblindMode;
-      },
       getImagePreview(): ImagePreview | undefined {
         return this.$refs['imagePreview'] as ImagePreview;
       },
@@ -1338,6 +1333,10 @@
 
   body {
     user-select: none;
+  }
+
+  .platform-darwin #conversations {
+    padding-right: 8px;
   }
 
   .bbcode,

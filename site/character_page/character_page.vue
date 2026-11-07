@@ -330,40 +330,42 @@
       };
     },
     computed: {
-      tabLabels(): { [key: string]: string } {
-        const labels: { [key: string]: string } = {};
+      tabLabels(): Array<{ id: string; label: string }> {
+        const tabs: Array<{ id: string; label: string }> = [
+          { id: '0', label: this.l('profile.tab.overview') },
+          { id: '1', label: this.l('profile.tab.info') }
+        ];
 
-        // Overview tab - key '0'
-        labels['0'] = this.l('profile.tab.overview');
-
-        // Info tab - key '1'
-        labels['1'] = this.l('profile.tab.info');
-
-        // Images tab - key '2'
         const imageCount = (this as any).character?.character?.image_count || 0;
-        labels['2'] = this.l('profile.tab.images') + ` (${imageCount})`;
+        tabs.push({
+          id: '2',
+          label: `${this.l('profile.tab.images')} (${imageCount})`
+        });
 
-        // Guestbook tab - key '3'
         if ((this as any).character?.settings?.guestbook) {
           // falls back to the first page's length rather than showing nothing if postCount doesn't exist
           const guestbookCount =
             this.guestbook !== null
               ? ` (${this.guestbook.postCount ?? this.guestbook.posts.length})`
               : '';
-          labels['3'] = this.l('profile.tab.guestbook') + guestbookCount;
+          tabs.push({
+            id: '3',
+            label: `${this.l('profile.tab.guestbook')}${guestbookCount}`
+          });
         }
 
-        // Friends tab - key '4'
         if (this.character?.is_self || this.character?.settings?.show_friends) {
           const friendsCount =
             this.friends !== null ? ` (${this.friends.length})` : '';
-          labels['4'] = this.l('profile.tab.friends') + friendsCount;
+          tabs.push({
+            id: '4',
+            label: `${this.l('profile.tab.friends')}${friendsCount}`
+          });
         }
 
-        // Recon tab - key '5'
-        labels['5'] = this.l('profile.tab.recon');
+        tabs.push({ id: '5', label: this.l('profile.tab.recon') });
 
-        return labels;
+        return tabs;
       }
     },
     watch: {
@@ -813,6 +815,26 @@
     padding: 5px;
   }
 
+  .character-kinks-block .character-kink.stock-kink.comparison-favorite {
+    --characterKinkStockColor: var(--scoreMatchFg);
+    --characterKinkStockHighlightedColor: var(--scoreMatchFg);
+  }
+
+  .character-kinks-block .character-kink.stock-kink.comparison-yes {
+    --characterKinkStockColor: var(--scoreWeakMatchFg);
+    --characterKinkStockHighlightedColor: var(--scoreWeakMatchFg);
+  }
+
+  .character-kinks-block .character-kink.stock-kink.comparison-maybe {
+    --characterKinkStockColor: var(--scoreWeakMismatchFg);
+    --characterKinkStockHighlightedColor: var(--scoreWeakMismatchFg);
+  }
+
+  .character-kinks-block .character-kink.stock-kink.comparison-no {
+    --characterKinkStockColor: var(--scoreMismatchFg);
+    --characterKinkStockHighlightedColor: var(--scoreMismatchFg);
+  }
+
   .stock-kink {
     .kink-name,
     i {
@@ -1095,6 +1117,7 @@
   .character-kinks-block .character-kink.comparison-favorite,
   .match-report .scores .match-score.match,
   .infotag.match {
+    color: var(--scoreMatchFg);
     background-color: var(--scoreMatchBg);
     border: solid 1px var(--scoreMatchFg);
   }
@@ -1102,6 +1125,7 @@
   .character-kinks-block .character-kink.comparison-yes,
   .match-report .scores .match-score.weak-match,
   .infotag.weak-match {
+    color: var(--scoreWeakMatchFg);
     background-color: var(--scoreWeakMatchBg);
     border: 1px solid var(--scoreWeakMatchFg);
   }
@@ -1109,6 +1133,7 @@
   .character-kinks-block .character-kink.comparison-maybe,
   .match-report .scores .match-score.weak-mismatch,
   .infotag.weak-mismatch {
+    color: var(--scoreWeakMismatchFg);
     background-color: var(--scoreWeakMismatchBg);
     border: 1px solid var(--scoreWeakMismatchFg);
   }
@@ -1116,6 +1141,7 @@
   .character-kinks-block .character-kink.comparison-no,
   .match-report .scores .match-score.mismatch,
   .infotag.mismatch {
+    color: var(--scoreMismatchFg);
     background-color: var(--scoreMismatchBg);
     border: 1px solid var(--scoreMismatchFg);
   }

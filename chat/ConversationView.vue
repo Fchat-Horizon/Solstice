@@ -356,7 +356,7 @@
       "
       :hasToolbar="settings.bbCodeBar"
       ref="textBox"
-      style="position: relative; margin-top: 5px"
+      style="margin-top: 5px"
       :maxlength="
         isChannel(conversation) || isPrivate(conversation)
           ? conversation.maxMessageLength
@@ -406,6 +406,7 @@
       </div>
       <div class="bbcode-editor-controls">
         <div
+          class="char-count"
           v-if="isChannel(conversation) || isPrivate(conversation)"
           style="margin-right: 5px"
         >
@@ -620,9 +621,21 @@
       messages(): ReadonlyArray<
         Conversation.Message | Conversation.SFCMessage
       > {
-        if (this.search === '') return this.conversation.messages;
+        let messages: ReadonlyArray<
+          Conversation.Message | Conversation.SFCMessage
+        > = this.conversation.messages;
+        if (
+          core.state.hiddenUsers.length > 0 &&
+          this.isChannel(this.conversation)
+        )
+          messages = messages.filter(
+            x =>
+              x.type !== Conversation.Message.Type.Ad ||
+              !core.isHidden(x.sender.name)
+          );
+        if (this.search === '') return messages;
         const filter = new RegExp(this.search.replace(/[^\w]/gi, '\\$&'), 'i');
-        return this.conversation.messages.filter(
+        return messages.filter(
           x =>
             filter.test(x.text) ||
             filter.test(_.get(x, 'sender.name', '') as string)
@@ -1184,7 +1197,7 @@
       }
     }
 
-    .btn-toolbar {
+    .btn-toolbar:not(.bbcode-toolbar) {
       .btn-group {
         margin-right: 0.3rem;
 
@@ -1410,6 +1423,7 @@
       text-shadow: none;
 
       &.perfect {
+        color: var(--scorePerfectMatchFg);
         background-color: var(--scorePerfectMatchBg);
         border: 1px solid var(--scorePerfectMatchFg);
         box-shadow: 0 0 5px 0 rgba(255, 255, 255, 0.5);
@@ -1421,21 +1435,25 @@
       }
 
       &.match {
+        color: var(--scoreMatchFg);
         background-color: var(--scoreMatchBg);
         border: solid 1px var(--scoreMatchFg);
       }
 
       &.weak-match {
+        color: var(--scoreWeakMatchFg);
         background-color: var(--scoreWeakMatchBg);
         border: 1px solid var(--scoreWeakMatchFg);
       }
 
       &.weak-mismatch {
+        color: var(--scoreWeakMismatchFg);
         background-color: var(--scoreWeakMismatchBg);
         border: 1px solid var(--scoreWeakMismatchFg);
       }
 
       &.mismatch {
+        color: var(--scoreMismatchFg);
         background-color: var(--scoreMismatchBg);
         border: 1px solid var(--scoreMismatchFg);
       }

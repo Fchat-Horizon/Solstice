@@ -2,6 +2,7 @@
   <div
     style="display: flex; flex-direction: column; height: 100%"
     :class="getThemeClass()"
+    class="border-bottom"
     @auxclick.prevent
   >
     <div v-html="styling"></div>
@@ -12,7 +13,6 @@
         border-bottom-width: 1px;
         min-height: 31px;
       `"
-      class="border-bottom"
       id="window-tabs"
     >
       <h4 class="window-title" v-if="!hideWindowControls">
@@ -92,7 +92,7 @@
               class="nav-link tab"
               :class="{
                 active: tab === activeTab,
-                hasNew: tab.hasNew > 0 && tab !== activeTab
+                hasNew: tab.newCount > 0 && tab !== activeTab
               }"
             >
               <img
@@ -106,7 +106,7 @@
                 class="badge rounded-pill text-bg-danger ms-1"
                 v-if="shouldShowNotificationBadge(tab)"
               >
-                {{ tab.hasNew }}</span
+                {{ tab.newCount }}</span
               >
               <a
                 href="#"
@@ -149,19 +149,6 @@
           class="d-none d-md-flex btn btn-light"
         >
           <i class="fa fa-cog"> </i>
-        </span>
-
-        <span class="btn btn-light" @click.stop="minimize()">
-          <i class="far fa-window-minimize"></i>
-        </span>
-        <span class="btn btn-light" @click="maximize()">
-          <i
-            class="far"
-            :class="'fa-window-' + (isMaximized ? 'restore' : 'maximize')"
-          ></i>
-        </span>
-        <span class="btn btn-light" @click.stop="close()">
-          <i class="fa fa-times fa-lg"></i>
         </span>
       </div>
     </div>
@@ -243,7 +230,7 @@
   interface Tab {
     user: string | undefined;
     view: Electron.BrowserView;
-    hasNew: number;
+    newCount: number;
     avatarUrl?: string;
     insertedCssKey?: string;
     title: string;
@@ -277,6 +264,13 @@
         hideSingleTab: true
       };
     },
+    watch: {
+      styling(): void {
+        this.$nextTick(() => {
+          this.updateWindowOverlayColors();
+        });
+      }
+    },
     computed: {
       styling(): string {
         try {
@@ -295,6 +289,7 @@
     },
     async mounted(): Promise<void> {
       log.debug('init.window.mounting');
+
       // top bar devtools
       // browserWindow.webContents.openDevTools({ mode: 'detach' });
 
@@ -310,6 +305,8 @@
       updateSupportedLanguages(
         browserWindow.webContents.session.availableSpellCheckerLanguages
       );
+
+      this.updateWindowOverlayColors();
 
       log.debug('init.window.languages.supported');
       // console.log('MOUNT DICTIONARIES', getSafeLanguages(this.settings.spellcheckLang), this.settings.spellcheckLang);
@@ -373,6 +370,9 @@
       electron.ipcRenderer.send('request-update-state');
       electron.ipcRenderer.on('fix-logs', () =>
         this.activeTab!.view.webContents.send('fix-logs')
+      );
+      electron.ipcRenderer.on('settings-menu', () =>
+        this.activeTab!.view.webContents.send('settings-menu')
       );
       electron.ipcRenderer.on('ui-test', () =>
         this.activeTab!.view.webContents.send('ui-test')
@@ -454,12 +454,12 @@
         'disconnect',
         (_e: Electron.IpcRendererEvent, id: number) => {
           const tab = this.tabMap[id];
-          if (tab.hasNew > 0) {
-            tab.hasNew = 0;
+          if (tab.newCount > 0) {
+            tab.newCount = 0;
             electron.ipcRenderer.send(
-              'has-new',
+              'new-message-count',
 
-              this.tabs.reduce((cur, t) => cur + t.hasNew, 0),
+              this.tabs.reduce((cur, t) => cur + t.newCount, 0),
               this.settings.horizonShowNotificationBadge
             );
           }
@@ -470,13 +470,13 @@
         }
       );
       electron.ipcRenderer.on(
-        'has-new',
-        (_e: Electron.IpcRendererEvent, id: number, hasNew: number) => {
+        'new-message-count',
+        (_e: Electron.IpcRendererEvent, id: number, newCount: number) => {
           const tab = this.tabMap[id];
-          tab.hasNew = hasNew;
+          tab.newCount = newCount;
           electron.ipcRenderer.send(
-            'has-new',
-            this.tabs.reduce((cur, t) => cur + t.hasNew, 0),
+            'new-message-count',
+            this.tabs.reduce((cur, t) => cur + t.newCount, 0),
             this.settings.horizonShowNotificationBadge
           );
         }
@@ -575,6 +575,7 @@
 
       log.debug('init.window.mounted');
     },
+    beforeDestroy(): void {},
     methods: {
       getSyncedTheme() {
         if (!this.settings.themeSync) return this.settings.theme;
@@ -668,7 +669,7 @@
         const tab: Tab = {
           user: undefined,
           view,
-          hasNew: 0,
+          newCount: 0,
           title: l('title')
         };
         this.tabs.push(tab);
@@ -739,8 +740,8 @@
           return;
         this.tabs.splice(this.tabs.indexOf(tab), 1);
         electron.ipcRenderer.send(
-          'has-new',
-          this.tabs.reduce((cur, t) => cur + t.hasNew, 0),
+          'new-message-count',
+          this.tabs.reduce((cur, t) => cur + t.newCount, 0),
           this.settings.horizonShowNotificationBadge
         );
         delete this.tabMap[tab.view.webContents.id];
@@ -778,8 +779,7 @@
         electron.ipcRenderer.send('install-update', this.updateVersion);
       },
       openSettingsMenu(): void {
-        log.debug('settings clicked');
-        electron.ipcRenderer.send('open-settings-menu');
+        this.activeTab!.view.webContents.send('settings-menu');
       },
       onTabBeforeEnter(el: HTMLElement): void {
         if (this.isClosing) return;
@@ -832,6 +832,7 @@
           return {
             ['platform-' + this.platform]: true,
             'force-reduced-motion': this.settings?.reducedMotion || false,
+            horizonHighContrast: this.settings?.horizonHighContrast || false,
             bbcodeGlow: this.settings?.horizonBbcodeGlow || false,
             disableWindowsHighContrast:
               this.settings?.risingDisableWindowsHighContrast || false
@@ -842,10 +843,25 @@
           };
         }
       },
+      updateWindowOverlayColors(): void {
+        if (
+          process.platform === 'darwin' ||
+          this.settings.forceNativeWindowControls
+        )
+          return;
+        let color = getComputedStyle(document.body).color;
+        log.debug('window.titlebar.color', color);
+
+        browserWindow.setTitleBarOverlay({
+          color: '#ff000000',
+          symbolColor: color || 'white',
+          height: 32
+        });
+      },
       shouldShowNotificationBadge(tab: Tab): boolean {
         return (
           this.settings.horizonShowWindowAndChatNotificationBadge !== false &&
-          tab.hasNew > 0
+          tab.newCount > 0
         );
       }
     }
@@ -872,6 +888,8 @@
   }
   #window-tabs {
     user-select: none;
+    margin-left: env(titlebar-area-x, 0px);
+    width: env(titlebar-area-width, 100%);
 
     .btn {
       border: 0;

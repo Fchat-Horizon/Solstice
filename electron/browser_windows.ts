@@ -149,21 +149,21 @@ const badges: electron.NativeImage[] = [
 ];
 
 /**
- * Handles the 'has-new' IPC event.
+ * Handles the 'new-message-count' IPC event.
  * This event is triggered when there are new messages in an appplication window's tab(s).
  * It updates the dock badge on macOS and applies an overlay icon to all windows on Windows and Linux.
  * @event
  * @param {IpcMainEvent} e Event reference.
- * @param {number} hasNew The amount of new messages for the window that called it. If hasNew =< 0, the user has no new messages
+ * @param {number} newCount The amount of new messages for the window that called it. If newCount =< 0, the user has no new messages
  * @param {boolean} numberedBadges Whether to show the number of new messages in the badge or just a dot indicating that there are new messages. This is used on Windows and Linux, as macOS does not support numbered badges.
  */
 electron.ipcMain.on(
-  'has-new',
-  (e: IpcMainEvent, hasNew: number, numberedBadges: boolean) => {
-    log.debug('app.hasNew', { hasNew, numberedBadges });
+  'new-message-count',
+  (e: IpcMainEvent, newCount: number, numberedBadges: boolean) => {
+    log.debug('app.newCount', { newCount, numberedBadges });
     const window = electron.BrowserWindow.fromWebContents(e.sender);
     if (window !== undefined && window !== null) {
-      newMessagesMap[window.id] = hasNew;
+      newMessagesMap[window.id] = newCount;
     }
     updateNotificationBadges(numberedBadges);
   }
@@ -355,6 +355,11 @@ export function createMainWindow(
     windowProperties.titleBarStyle = 'hiddenInset';
   } else {
     windowProperties.frame = settings.forceNativeWindowControls;
+    windowProperties.titleBarStyle = settings.forceNativeWindowControls
+      ? 'default'
+      : 'hidden';
+    //we'll set the actual colors in Window.vue, but passing 'true' just enables overlay controls with default controls
+    windowProperties.titleBarOverlay = !settings.forceNativeWindowControls;
   }
 
   const window = new electron.BrowserWindow(windowProperties);
@@ -785,74 +790,6 @@ export function setUpdaterSplashProgress(percent: number): void {
 export function closeUpdaterSplash(): void {
   if (updaterSplash && !updaterSplash.isDestroyed()) updaterSplash.close();
   updaterSplash = undefined;
-}
-
-/**
- * Creates a new settings window.
- * @function
- * @param {GeneralSettings} settings
- * The general settings for the application, modified by the user in the settings window.
- * @param {ImporterHint} ImporterHint
- * Handles what and how we should import
- * @param {electron.BrowserWindow} parentWindow
- * The parent window for the settings window. This is used to create a modal dialog.
- * @returns {electron.BrowserWindow | undefined}
- * Returns the newly created settings window or undefined if creation failed.
- */
-export function createSettingsWindow(
-  settings: GeneralSettings,
-  ImporterHint: ImporterHint,
-  parentWindow: electron.BrowserWindow
-): electron.BrowserWindow | undefined {
-  let desiredHeight = 570;
-  let desiredWidth = 885;
-
-  const windowProperties: electron.BrowserWindowConstructorOptions = {
-    center: true,
-    show: false,
-    icon: process.platform === 'win32' ? winIcon : pngIcon,
-    frame: false,
-    width: desiredWidth,
-    minWidth: desiredWidth,
-    height: desiredHeight,
-    minHeight: desiredHeight,
-    resizable: true,
-    modal: true,
-    parent: parentWindow,
-    maximizable: false,
-    webPreferences: {
-      webviewTag: true,
-      nodeIntegration: true,
-      nodeIntegrationInWorker: true,
-      spellcheck: true,
-      enableRemoteModule: true,
-      contextIsolation: false,
-      partition: 'persist:fchat'
-    } as any
-  };
-
-  if (process.platform === 'darwin') {
-    windowProperties.titleBarStyle = 'hiddenInset';
-  } else if (settings.forceNativeWindowControls) {
-    windowProperties.frame = true;
-    windowProperties.minimizable = false;
-    windowProperties.maximizable = false;
-    windowProperties.autoHideMenuBar = true;
-  }
-  const browserWindow = new electron.BrowserWindow(windowProperties);
-  remoteMain.enable(browserWindow.webContents);
-  browserWindow.loadFile(path.join(__dirname, 'settings.html'), {
-    query: {
-      settings: JSON.stringify(settings),
-      import: ImporterHint === 'none' ? '' : ImporterHint
-    }
-  });
-
-  browserWindow.once('ready-to-show', () => {
-    browserWindow.show();
-  });
-
-  return browserWindow;
 }
 
 /**

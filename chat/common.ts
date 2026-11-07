@@ -89,7 +89,10 @@ export function getByteLength(this: any | never, str: string): number {
   return byteLen;
 }
 
+const SETTINGS_VERSION = 1;
+
 export class Settings implements ISettings {
+  version = SETTINGS_VERSION;
   playSound = true;
   clickOpensMessage = false;
   disallowedTags: string[] = [];
@@ -105,6 +108,7 @@ export class Settings implements ISettings {
   joinMessages = false;
   alwaysNotify = false;
   logMessages = true;
+  horizonLogChannels = true;
   logAds = false;
   fontSize = 14;
   showNeedsReply = false;
@@ -124,7 +128,6 @@ export class Settings implements ISettings {
   risingComparisonInSearch = true;
 
   risingShowUnreadOfflineCount = true;
-  risingColorblindMode = false;
   risingShowPortraitNearInput = true;
   risingShowPortraitInMessage = true;
   risingShowHighQualityPortraits = true;
