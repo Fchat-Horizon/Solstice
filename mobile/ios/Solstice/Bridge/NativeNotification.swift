@@ -8,10 +8,20 @@ import UserNotifications
 // from the bundled www/sounds/<name>.mp3 just like the Android MediaPlayer path.
 //
 // Foreground presentation and notification taps are handled by WebViewController, which is
-// the UNUserNotificationCenterDelegate (it owns the WebView needed to dispatch the
-// `notification-clicked` event back into the web app).
+// the UNUserNotificationCenterDelegate (it brings the character's page to the front and dispatches
+// the `notification-clicked` event into it).
 final class NativeNotification: NSObject, WKScriptMessageHandlerWithReply, AVAudioPlayerDelegate {
     static let notificationIdentifier = "message"
+
+    /// The ChatPage this bridge belongs to; see identifier(for:page:).
+    var pageId = 1
+
+    /// The notification identifier for a conversation. Two characters can both have a PM open with the
+    /// same person, so pages after the first tag their identifiers; the first page keeps the bare
+    /// conversation key it always used. NativeSocket posts and clears with the same identifiers.
+    static func identifier(for key: String, page: Int) -> String {
+        page == 1 ? key : "session\(page):\(key)"
+    }
 
     // AVAudioPlayer stops the moment it is deallocated, so keep players alive until they
     // finish (multiple notification sounds can briefly overlap).
@@ -59,11 +69,11 @@ final class NativeNotification: NSObject, WKScriptMessageHandlerWithReply, AVAud
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = text
-        content.userInfo = ["data": data]
+        content.userInfo = ["data": data, "session": pageId]
         // One notification per conversation: the JS layer passes conversation.key as `data`, so reuse it
         // as the identifier (a new message replaces that conversation's banner instead of stacking) and
         // the thread id (Notification Center grouping). Fall back to a constant when no key is given.
-        let key = data.isEmpty ? Self.notificationIdentifier : data
+        let key = Self.identifier(for: data.isEmpty ? Self.notificationIdentifier : data, page: pageId)
         content.threadIdentifier = key
 
         func submit(_ attachments: [UNNotificationAttachment]) {

@@ -57,4 +57,46 @@
   // Native HTTP for the LAN log sync session (NativeSync.swift). request(method, url, headers,
   // bodyBase64, timeoutMs) resolves to { status, bodyBase64 }, or rejects on a connection failure.
   window.NativeSync = make('nativeSync', ['request']);
+
+  // Several characters at once (mobile/sessions.ts, ChatPage.swift). That module reads this bridge
+  // synchronously, as Android's addJavascriptInterface allows, so the getters answer from a local
+  // copy: WebViewController seeds it in window.__solsticeSessionBoot (a user script that runs just
+  // before this one) and pushes every change through window.__solsticeSessionsPush. Only the calls
+  // that change something go to native, and nothing waits on them.
+  var boot = window.__solsticeSessionBoot;
+  var sessionsHandler = window.webkit && window.webkit.messageHandlers
+    ? window.webkit.messageHandlers.nativeSessions
+    : undefined;
+  if (boot && sessionsHandler) {
+    var cache = { state: boot.state, credentials: boot.credentials || '', ticket: boot.ticket || '' };
+    var post = function (method, args) {
+      sessionsHandler.postMessage({ method: method, args: args }).catch(function () {});
+    };
+    window.NativeSessions = {
+      id: function () { return boot.id; },
+      max: function () { return cache.state.max; },
+      state: function () { return JSON.stringify(cache.state); },
+      report: function (json) { post('report', [json]); },
+      switchTo: function (id) { post('switchTo', [id]); },
+      add: function () {
+        if (cache.state.sessions.length >= cache.state.max) return false;
+        post('add', []);
+        return true;
+      },
+      close: function (id) { post('close', [id]); },
+      setCredentials: function (json) { cache.credentials = json; post('setCredentials', [json]); },
+      getCredentials: function () { return cache.credentials; },
+      setTicket: function (json) { cache.ticket = json; post('setTicket', [json]); },
+      getTicket: function () { return cache.ticket; }
+    };
+    window.__solsticeSessionsPush = function (update) {
+      if (update.credentials !== undefined) cache.credentials = update.credentials;
+      if (update.ticket !== undefined) cache.ticket = update.ticket;
+      if (update.state !== undefined) {
+        cache.state = update.state;
+        // Set by mobile/sessions.ts once the app script has loaded.
+        if (window.__solsticeSessions) window.__solsticeSessions(update.state);
+      }
+    };
+  }
 })();

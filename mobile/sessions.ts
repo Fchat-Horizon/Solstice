@@ -1,7 +1,8 @@
 import Vue from 'vue';
 
-// Prototype: several characters at once. The native host (MainActivity on Android) runs one WebView
-// per character, like desktop runs one page per tab, and exposes NativeSessions to each of them. This
+// Prototype: several characters at once. The native host (MainActivity on Android, WebViewController
+// and ChatPage on iOS) runs one WebView per character, like desktop runs one page per tab, and exposes
+// NativeSessions to each of them; iOS serves the synchronous getters from a copy kept in bridge.js. This
 // module is the page's side of that: it reports this character's state, keeps a reactive copy of every
 // session's, and wraps the calls that switch, add and close sessions. Which switcher UI is drawn is
 // chosen at build time (SWITCHER_DESIGN), so the three prototype builds differ only in this flag.
