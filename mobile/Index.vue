@@ -549,7 +549,7 @@
         align-items: center;
         gap: 6px;
         /* Up under the status bar too, so the bar shows the strip rather than a band of page. */
-        margin: calc(-1 * (var(--page-pad) + var(--inset-top))) calc(-1 * var(--page-pad)) 6px;
+        margin: calc(-1 * (var(--page-pad) + var(--inset-top))) calc(-1 * var(--page-pad)) var(--strip-gap);
         padding: calc(6px + var(--inset-top)) var(--page-pad) 6px;
         background: var(--bs-tertiary-bg);
         border-bottom: 1px solid var(--bs-border-color);
@@ -600,10 +600,18 @@
         z-index: 20;
     }
 
-    /* With the strip above the chat, an open drawer starts under it instead of at the screen top. */
+    #page {
+        --strip-gap: 6px;
+    }
+
+    /*
+     * With the strip above the chat, an open drawer starts right at the strip's bottom edge instead of at
+     * the screen top. The chat sits --strip-gap below the strip, so reach up over that gap, or the dimmed
+     * backdrop shows through as a dark band between the strip and the drawer.
+     */
     .switcher-tabs .sidebar-wrapper.open .sidebar {
-        top: 0;
-        padding-top: 0;
+        top: calc(-1 * var(--strip-gap));
+        padding-top: var(--strip-gap);
     }
 
     /* B: the "switch to" strip in the drawer, and a dot on the menu button. */
