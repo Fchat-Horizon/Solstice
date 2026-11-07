@@ -49,6 +49,8 @@ import Connection from '../fchat/connection';
 import {appVersion, GeneralSettings, Logs, SettingsStore} from './filesystem';
 import MobilePlatformService from './platform';
 import Index from './Index.vue';
+import SessionCard from './SessionCard.vue';
+import {sessionsEnabled, switcherDesign} from './sessions';
 import Notifications from './notifications';
 import {noteInterruptedImport} from './importTrace';
 import {sendNotifyConfig, clearConversationNotification} from './notifyConfig';
@@ -432,6 +434,12 @@ ipcMain.on('request-send-ad', (event: any, adId: string) => //tslint:disable-lin
 
 // Mount even if init failed (an unreadable '_/settings', say): a blank WebView gives the user nothing to
 // act on, while the mounted app can still log in, export data and save the error log recorded here.
+// Character switcher prototype B lives in ChatView's drawer, which renders it only when this is set.
+if(sessionsEnabled && switcherDesign === 'drawer') {
+    Vue.component('mobile-session-card', SessionCard);
+    (<{__solsticeSessionCard?: boolean}><unknown>window).__solsticeSessionCard = true;
+}
+
 coreReady.catch((e: unknown) => logCrash('core.init', e)).then(() => {
     new Index({ //tslint:disable-line:no-unused-expression
         el: '#app'
