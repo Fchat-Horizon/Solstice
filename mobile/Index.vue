@@ -64,8 +64,6 @@
 </template>
 
 <script lang="ts">
-    import Axios from 'axios';
-    import * as qs from 'qs';
     import Vue from 'vue';
     import Chat from '../chat/Chat.vue';
     import core from '../chat/core';
@@ -75,6 +73,7 @@
     import {SimpleCharacter} from '../interfaces';
     import CharacterPage from '../site/character_page/character_page.vue';
     import {appVersion, GeneralSettings, getGeneralSettings, setGeneralSettings, SettingsStore} from './filesystem';
+    import {fetchApiTicket, ticketProvider} from './api-ticket';
     import AppSettingsDialog from './AppSettingsDialog.vue';
     import AppExporterDialog from './AppExporterDialog.vue';
     import DeviceSyncDialog from './DeviceSyncDialog.vue';
@@ -132,18 +131,14 @@
                 if(self.loggingIn) return;
                 self.loggingIn = true;
                 try {
-                    const data = <{ticket?: string, error: string, characters: {[key: string]: number}, default_character: number}>
-                        (await Axios.post('https://www.f-list.net/json/getApiTicket.php', qs.stringify({
-                            account: self.settings.account, password: self.settings.password, no_friends: true, no_bookmarks: true,
-                            new_character_list: true
-                        }))).data;
+                    const data = await fetchApiTicket(self.settings.account, self.settings.password);
                     if(data.error !== '') {
                         self.error = data.error;
                         return;
                     }
                     if(self.saveLogin) await setGeneralSettings(self.settings);
                     Socket.host = self.settings.host;
-                    core.connection.setCredentials(self.settings.account, self.settings.password);
+                    core.connection.setCredentials(self.settings.account, ticketProvider(self.settings.account, self.settings.password));
                     core.connection.onEvent('connected', () => {
                         self.backButtonHandler = (e: Event) => {
                             const chatView = (self.$refs['chat'] as any)?.$refs?.['chatview'] as any;
