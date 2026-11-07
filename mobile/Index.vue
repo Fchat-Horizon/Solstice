@@ -1,5 +1,5 @@
 <template>
-    <div id="page" style="position: relative; padding: 10px;" :class="themeClass" v-if="settings">
+    <div id="page" style="position: relative; padding: var(--page-pad);" :class="themeClass" v-if="settings">
         <div v-html="styling"></div>
         <update-banner></update-banner>
         <div v-if="!characters" style="display:flex; align-items:center; justify-content:center; min-height: 100%;">
@@ -273,6 +273,35 @@
 <style>
     html, body, #page {
         height: 100%;
+    }
+
+    #page {
+        --page-pad: 10px;
+    }
+
+    /*
+     * The sidebar drawers sit inside #page's padding (and, on iOS, inside the safe-area padding on html),
+     * but their backdrop is a full-screen .modal-backdrop, so an open drawer had a darkened gutter on its
+     * outer, top and bottom edges. Invisible on dark themes, obvious on light ones like peached. Stretch
+     * the open drawer over that padding and pad it back by the same amount, so it meets the screen edges
+     * while its contents and the expander button stay where they were.
+     */
+    .sidebar-wrapper.open .sidebar {
+        top: calc(-1 * (var(--page-pad) + env(safe-area-inset-top, 0px)));
+        bottom: calc(-1 * (var(--page-pad) + env(safe-area-inset-bottom, 0px)));
+        padding-top: calc(var(--page-pad) + env(safe-area-inset-top, 0px));
+        /* .sidebar already has 10px of bottom padding (scss/_chat.scss). */
+        padding-bottom: calc(10px + var(--page-pad) + env(safe-area-inset-bottom, 0px));
+    }
+
+    .sidebar-wrapper.open .sidebar-left {
+        left: calc(-1 * (var(--page-pad) + env(safe-area-inset-left, 0px)));
+        padding-left: calc(var(--page-pad) + env(safe-area-inset-left, 0px));
+    }
+
+    .sidebar-wrapper.open .sidebar-right {
+        right: calc(-1 * (var(--page-pad) + env(safe-area-inset-right, 0px)));
+        padding-right: calc(var(--page-pad) + env(safe-area-inset-right, 0px));
     }
 
     html, .modal {
