@@ -264,7 +264,9 @@ abstract class Conversation implements Interfaces.Conversation {
       shouldLog = true;
     } else {
       // Default: follow global message setting
-      shouldLog = core.state.settings.logMessages;
+      shouldLog = isChannel(this)
+        ? core.state.settings.horizonLogChannels
+        : core.state.settings.logMessages;
     }
 
     if (shouldLog) {
@@ -457,8 +459,7 @@ class PrivateConversation
       );
       this.safeAddMessage(message);
 
-      if (core.state.settings.logMessages)
-        await core.logs.logMessage(this, message);
+      await this.logMessage(message, false);
     });
   }
 
@@ -1194,19 +1195,17 @@ export async function testSmartFilterForPrivateMessage(
         core.connection.send('PRI', message);
         core.cache.markLastPostTime();
 
-        if (core.state.settings.logMessages) {
-          const logMessage = createMessage(
-            Interfaces.Message.Type.Message,
-            core.characters.ownCharacter,
-            message.message,
-            new Date()
-          );
+        const logMessage = createMessage(
+          Interfaces.Message.Type.Message,
+          core.characters.ownCharacter,
+          message.message,
+          new Date()
+        );
 
-          await withNeutralVisibilityPrivateConversation(fromChar, async p => {
-            // core.logs.logMessage(p, logMessage)
-            await p.addMessage(logMessage);
-          });
-        }
+        await withNeutralVisibilityPrivateConversation(fromChar, async p => {
+          // core.logs.logMessage(p, logMessage)
+          await p.addMessage(logMessage);
+        });
       } else {
         const message = {
           recipient: fromChar.name,
@@ -1221,19 +1220,17 @@ export async function testSmartFilterForPrivateMessage(
         core.connection.send('PRI', message);
         core.cache.markLastPostTime();
 
-        if (core.state.settings.logMessages) {
-          const logMessage = createMessage(
-            Interfaces.Message.Type.Message,
-            core.characters.ownCharacter,
-            message.message,
-            new Date()
-          );
+        const logMessage = createMessage(
+          Interfaces.Message.Type.Message,
+          core.characters.ownCharacter,
+          message.message,
+          new Date()
+        );
 
-          await withNeutralVisibilityPrivateConversation(fromChar, async p => {
-            // core.logs.logMessage(p, logMessage)
-            await p.addMessage(logMessage);
-          });
-        }
+        await withNeutralVisibilityPrivateConversation(fromChar, async p => {
+          // core.logs.logMessage(p, logMessage)
+          await p.addMessage(logMessage);
+        });
       }
     });
   }
@@ -1482,9 +1479,20 @@ export default function (this: any): Interfaces.State {
     const words = conversation.settings.highlightWords.slice();
     const watchedCharacters =
       conversation.settings.horizonHighlightUsers.slice();
-    if (conversation.settings.defaultHighlights)
-      words.push(...core.state.settings.highlightWords);
-    watchedCharacters.push(...core.state.settings.horizonHighlightUsers);
+    if (conversation.settings.defaultHighlights) {
+      const globalHighlightWords = core.state.globalSettings.highlightWords;
+      const characterHighlightWords =
+        core.state.characterSettings.highlightWords ?? [];
+      words.push(...globalHighlightWords, ...characterHighlightWords);
+    }
+    const globalWatchedCharacters =
+      core.state.globalSettings.horizonHighlightUsers;
+    const characterWatchedCharacters =
+      core.state.characterSettings.horizonHighlightUsers ?? [];
+    watchedCharacters.push(
+      ...globalWatchedCharacters,
+      ...characterWatchedCharacters
+    );
     if (
       (conversation.settings.highlight === Interfaces.Setting.Default &&
         core.state.settings.highlight) ||

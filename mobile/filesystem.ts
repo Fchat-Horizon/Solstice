@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
 
 import {Message as MessageImpl} from '../chat/common';
-import core from '../chat/core';
+import core, {GLOBAL_SETTINGS_CHARACTER} from '../chat/core';
 import {Conversation, Logs as Logging, Settings} from '../chat/interfaces';
 import l from '../chat/localize';
 
@@ -148,8 +148,10 @@ export class Logs implements Logging {
         return conversations;
     }
 
+    // Both native hosts list every folder in app storage, which since Horizon 2.5 includes the '_' folder
+    // holding the global settings; it is not a character.
     async getAvailableCharacters(): Promise<ReadonlyArray<string>> {
-        return NativeLogs.getCharacters();
+        return (await NativeLogs.getCharacters()).filter((x) => x !== GLOBAL_SETTINGS_CHARACTER);
     }
 
     async fixLogs(character: string): Promise<void> {
@@ -185,11 +187,15 @@ export class SettingsStore implements Settings.Store {
         return <Settings.Keys[K]>JSON.parse(file);
     }
 
-    async set<K extends keyof Settings.Keys>(key: K, value: Settings.Keys[K]): Promise<void> {
-        return NativeFile.write(`${core.connection.character}/${key}`, JSON.stringify(value));
+    // `character` is GLOBAL_SETTINGS_CHARACTER ('_') when chat/core.ts saves the global settings. Nothing
+    // else creates that folder, and Android's NativeFile.write does not create parent folders (iOS does),
+    // so make sure it exists first; character folders already do (NativeLogs.init creates them).
+    async set<K extends keyof Settings.Keys>(key: K, value: Settings.Keys[K], character: string = core.connection.character): Promise<void> {
+        await NativeFile.ensureDirectory(character);
+        return NativeFile.write(`${character}/${key}`, JSON.stringify(value));
     }
 
     async getAvailableCharacters(): Promise<string[]> {
-        return NativeFile.listDirectories('/');
+        return (await NativeFile.listDirectories('/')).filter((x) => x !== GLOBAL_SETTINGS_CHARACTER);
     }
 }

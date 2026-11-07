@@ -27,8 +27,8 @@ function readSoundThemeJson(filePath) {
 }
 
 module.exports = {
-    // Sound-theme JSON is served from the bundle; everything else returns '' —
-    // Settings.vue wraps readFileSync in try/catch and the mobile theme CSS is loaded separately.
+    // Sound-theme JSON is served from the bundle; everything else returns ''. The settings menu
+    // (chat/SettingsView.vue) wraps readFileSync in try/catch and the mobile theme CSS is loaded separately.
     readFileSync: (filePath) => {
         const themeJson = readSoundThemeJson(filePath);
         return themeJson !== null ? themeJson : '';
@@ -41,7 +41,12 @@ module.exports = {
                 return SOUND_THEME_NAMES.map(name => ({ name, isDirectory: () => true }));
             return [];
         }
-        if (p.includes('theme')) return MOBILE_THEMES; // CSS themes
+        // CSS themes. mobile/chat.ts publishes the bundled names before anything mounts; the static list
+        // is only a fallback. The settings menu and the login screen then offer the same set.
+        if (p.includes('theme')) {
+            const bundled = typeof window !== 'undefined' && window.__availableThemes;
+            return Array.isArray(bundled) && bundled.length > 0 ? bundled.map(t => `${t}.css`) : MOBILE_THEMES;
+        }
         return [];
     },
     existsSync: (p) => {

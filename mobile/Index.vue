@@ -1,5 +1,5 @@
 <template>
-    <div id="page" style="position: relative; padding: 10px;" v-if="settings">
+    <div id="page" style="position: relative; padding: 10px;" :class="themeClass" v-if="settings">
         <div v-html="styling"></div>
         <update-banner></update-banner>
         <div v-if="!characters" style="display:flex; align-items:center; justify-content:center; min-height: 100%;">
@@ -52,7 +52,7 @@
             </div>
         </div>
         <chat v-else :ownCharacters="characters" :defaultCharacter="defaultCharacter" ref="chat"></chat>
-        <app-settings-dialog ref="appSettingsDialog"></app-settings-dialog>
+        <settings-view ref="settingsView"></settings-view>
         <app-exporter-dialog ref="appExporterDialog"></app-exporter-dialog>
         <device-sync-dialog ref="deviceSyncDialog"></device-sync-dialog>
         <modal :buttons="false" ref="profileViewer" dialogClass="profile-viewer">
@@ -74,7 +74,9 @@
     import CharacterPage from '../site/character_page/character_page.vue';
     import {appVersion, GeneralSettings, getGeneralSettings, setGeneralSettings, SettingsStore} from './filesystem';
     import {fetchApiTicket, ticketProvider} from './api-ticket';
-    import AppSettingsDialog from './AppSettingsDialog.vue';
+    import SettingsView from '../chat/SettingsView.vue';
+    import {EventBus, OpenSettingsMenuEvent} from '../chat/preview/event-bus';
+    import {GeneralSettings as DesktopGeneralSettings} from '../electron/common';
     import AppExporterDialog from './AppExporterDialog.vue';
     import DeviceSyncDialog from './DeviceSyncDialog.vue';
     import UpdateBanner from './UpdateBanner.vue';
@@ -94,7 +96,7 @@
     }
 
     export default Vue.extend({
-        components: {chat: Chat, modal: Modal, characterPage: CharacterPage, 'app-settings-dialog': AppSettingsDialog, 'app-exporter-dialog': AppExporterDialog, 'device-sync-dialog': DeviceSyncDialog, 'update-banner': UpdateBanner},
+        components: {chat: Chat, modal: Modal, characterPage: CharacterPage, 'settings-view': SettingsView, 'app-exporter-dialog': AppExporterDialog, 'device-sync-dialog': DeviceSyncDialog, 'update-banner': UpdateBanner},
         data() {
             return {
                 showAdvanced: false,
@@ -109,20 +111,55 @@
                 profileName: '',
                 backButtonHandler: null as ((e: Event) => void) | null,
                 availableThemes: [] as ReadonlyArray<string>,
+                connected: false,
             };
         },
         async mounted(): Promise<void> {
-            //  See also electron/Settings.vue. In the mobile build target, theme names are exposed through the window object (rather than read from the .asar file like in the Electron build).
+            // In the mobile build target, theme names are exposed through the window object (rather than read from the .asar file like in the Electron build).
             this.availableThemes = (window as any).__availableThemes || [];
         },
         computed: {
+            // Mirrors electron/Index.vue getActiveThemeName: a character's own theme (settings menu,
+            // Appearance > Layout) wins while that character is connected.
+            activeTheme(): string {
+                const self = this as any;
+                let characterTheme: string | undefined;
+                try {
+                    characterTheme = self.connected ? core.state.settings.risingCharacterTheme : undefined;
+                } catch {
+                    characterTheme = undefined; // settings not loaded (core init failed)
+                }
+                return characterTheme !== undefined && self.availableThemes.indexOf(characterTheme) !== -1
+                    ? characterTheme : self.settings.theme;
+            },
             styling(): string {
-                if(window.NativeView !== undefined) window.NativeView.setTheme((this as any).settings.theme);
+                const theme = (this as any).activeTheme;
+                if(window.NativeView !== undefined) window.NativeView.setTheme(theme);
                 //tslint:disable-next-line:no-require-imports
-                return `<style id="themeStyle">${require('../scss/fa.scss')}${require(`../scss/themes/chat/${(this as any).settings.theme}.scss`)}</style>`;
+                return `<style id="themeStyle">${require('../scss/fa.scss')}${require(`../scss/themes/chat/${theme}.scss`)}</style>`;
+            },
+            // Since Horizon 2.5 the accessibility and text colour options are app settings applied as
+            // classes on the page root (electron/Index.vue getThemeClass) rather than by ChatView, so the
+            // mobile root has to carry them too or colourblind mode and the rest silently stop working.
+            themeClass(): Record<string, boolean> {
+                const settings = (this as any).settings;
+                const colorblind = settings.horizonColorblindMode;
+                const colorblindActive = typeof colorblind === 'string' && colorblind !== 'none';
+                return {
+                    colorblindMode: colorblindActive,
+                    ...(colorblindActive ? {[`colorblind-${colorblind}`]: true} : {}),
+                    vanillaTextColors: !!settings.horizonVanillaTextColors,
+                    vanillaGenderColors: !!settings.horizonVanillaGenderColors,
+                    'force-reduced-motion': !!settings.reducedMotion,
+                    horizonHighContrast: !!settings.horizonHighContrast,
+                    bbcodeGlow: !!settings.horizonBbcodeGlow,
+                };
             },
         },
         methods: {
+            openSettingsMenu(data: OpenSettingsMenuEvent): void {
+                (<InstanceType<typeof SettingsView>>this.$refs['settingsView']).open(data.mode);
+            },
             resetHost(): void {
                 (this as any).settings.host = new GeneralSettings().host;
             },
@@ -140,6 +177,10 @@
                     Socket.host = self.settings.host;
                     core.connection.setCredentials(self.settings.account, ticketProvider(self.settings.account, self.settings.password));
                     core.connection.onEvent('connected', () => {
+                        self.connected = true;
+                        // ChatView's settings button asks for the menu over the EventBus, which Chat.vue
+                        // clears on every disconnect, so (re)register on each connect like electron/Index.vue.
+                        EventBus.$on('open-settings-menu', self.openSettingsMenu);
                         self.backButtonHandler = (e: Event) => {
                             const chatView = (self.$refs['chat'] as any)?.$refs?.['chatview'] as any;
                             if (chatView) {
@@ -160,6 +201,7 @@
                         NativeBackground.start();
                     });
                     core.connection.onEvent('closed', () => {
+                        self.connected = false;
                         document.removeEventListener('backbutton', self.backButtonHandler!);
                         NativeBackground.stop();
                     });
@@ -190,6 +232,14 @@
                 await setGeneralSettings(settings);
             }
             if(settings.account.length > 0) this.saveLogin = true;
+            // The shared settings menu reads and writes the full desktop set of app settings, but mobile's
+            // GeneralSettings only declares a handful. Fill in the rest with the desktop defaults (and heal
+            // nulls a partial file can carry) before the object becomes reactive, so every field exists and
+            // is tracked. Unknown keys persist through _.merge in getGeneralSettings.
+            const defaults = <Record<string, unknown>>(<unknown>new DesktopGeneralSettings());
+            const loaded = <Record<string, unknown>>(<unknown>settings);
+            for(const key of Object.keys(defaults))
+                if(!(key in loaded) || loaded[key] == null) loaded[key] = defaults[key];
             this.settings = settings;
             // Apply the saved UI language on startup (mirrors electron/chat.ts).
             // Mobile's minimal GeneralSettings doesn't declare displayLanguage, but
@@ -200,9 +250,6 @@
             (window as any).__setGeneralSettings = setGeneralSettings;
             // Document events, not EventBus: Chat.vue calls EventBus.clear() on every disconnect,
             // which would silently drop these app-lifetime listeners after the first logout.
-            document.addEventListener('open-mobile-app-settings', () => {
-                (<any>this.$refs['appSettingsDialog']).show();
-            });
             document.addEventListener('open-mobile-exporter', () => {
                 (<any>this.$refs['appExporterDialog']).show();
             });

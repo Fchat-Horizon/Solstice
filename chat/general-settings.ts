@@ -1,0 +1,87 @@
+import { ProfileViewerGalleryType } from '../site/utils';
+
+export type ColorblindMode =
+  | 'none'
+  | 'protanopia'
+  | 'protanomaly'
+  | 'deuteranopia'
+  | 'deuteranomaly'
+  | 'tritanopia'
+  | 'tritanomaly'
+  | 'achromatopsia'
+  | 'achromatomaly';
+
+export interface GeneralSettings {
+  account: string;
+  closeToTray: boolean;
+  profileViewer: boolean;
+  profileViewerGalleryType: ProfileViewerGalleryType;
+  profileViewerThumbAnimate: boolean;
+  profileViewerSmallerDefaultAvatars: boolean;
+  proxy: string;
+  host: string;
+  logDirectory: string;
+  spellcheckLang: string[] | string | undefined;
+  displayLanguage: string;
+  theme: string;
+  themeSync: boolean;
+  themeSyncDark: string;
+  themeSyncLight: string;
+  version: string;
+  beta: boolean;
+  updateCheck: boolean;
+  horizonHideAutoUpdater: boolean;
+  horizonAutoDownloadUpdates: boolean;
+  horizonSkippedUpdateVersion: string;
+  horizonPendingUpdateTag: string;
+  customDictionary: string[];
+  hwAcceleration: boolean;
+  reducedMotion: boolean;
+  horizonHighContrast: boolean;
+  horizonColorblindMode: ColorblindMode;
+  risingCacheExpiryDays: number;
+  horizonCacheMemoryCount: number;
+  risingSystemLogLevel: string | false;
+  risingDisableWindowsHighContrast: boolean;
+  browserPath: string;
+  browserArgs: string;
+  horizonAlwaysOpenIncognito: boolean;
+  zoomLevel: number;
+  horizonCustomCss: string;
+  horizonCustomCssEnabled: boolean;
+  horizonVanillaTextColors: boolean;
+  horizonVanillaGenderColors: boolean;
+  horizonBbcodeGlow: boolean;
+  horizonShowTips: boolean;
+  soundTheme: string;
+  soundThemeSoundVolumes: Record<string, Record<string, number>>;
+  horizonAutoLogin: boolean;
+  horizonWindowTitleCharacter: boolean;
+  use12HourTime: boolean;
+  showSeconds: boolean;
+  fuzzyDates: boolean;
+  flashWindow: boolean;
+  allowWindowTransparency: boolean;
+  forceNativeWindowControls: boolean;
+  nativeWindowShowSingleTab: boolean;
+  horizonForceAsciiProfiles: boolean;
+  hasImportedVanillaLogs: boolean;
+  hasDismissedVanillaImport: boolean;
+  vanillaCustomBaseDir: string | undefined;
+  autoBackupEnabled: boolean;
+  autoBackupTriggers: string[];
+  autoBackupIntervalHours: number;
+  autoBackupCronTimes: string[];
+  autoBackupIncludeGeneralSettings: boolean;
+  autoBackupIncludeCharacterSettings: boolean;
+  autoBackupIncludeLogs: boolean;
+  autoBackupIncludeDrafts: boolean;
+  autoBackupIncludePinnedConversations: boolean;
+  autoBackupIncludePinnedEicons: boolean;
+  autoBackupIncludeRecents: boolean;
+  autoBackupIncludeHidden: boolean;
+  autoBackupRetention: number;
+  autoBackupDirectory: string;
+  horizonShowNotificationBadge: boolean;
+  horizonShowWindowAndChatNotificationBadge: boolean;
+}
