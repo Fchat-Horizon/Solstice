@@ -564,6 +564,12 @@
         color: var(--bs-secondary-color);
     }
 
+    /* The strip is app-level, like desktop's tab bar, so it stays bright and tappable above a drawer's backdrop. */
+    .switcher-tabs .session-strip {
+        position: relative;
+        z-index: 20;
+    }
+
     /* With the strip above the chat, an open drawer starts under it instead of at the screen top. */
     .switcher-tabs .sidebar-wrapper.open .sidebar {
         top: 0;
