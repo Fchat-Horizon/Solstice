@@ -69,8 +69,12 @@ jobs:
 
       # Emits mobile/www, which mobile/ios/project.yml references as a folder reference.
       # Must run BEFORE xcodegen so the folder exists when the project is generated.
+      # SWITCHER_DESIGN bakes the multi-character switcher prototype (mobile/sessions.ts) into the
+      # bundle: `tabs` is design A, a tab strip above the chat. Empty builds the single-character app.
       - name: Build web assets
         run: pnpm --filter solstice-mobile build:dist
+        env:
+          SWITCHER_DESIGN: tabs
 
       - name: Install XcodeGen
         run: brew install xcodegen

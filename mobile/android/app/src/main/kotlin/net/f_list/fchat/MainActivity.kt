@@ -7,6 +7,7 @@ import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
@@ -18,6 +19,8 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.view.WindowManager
+import android.webkit.JavascriptInterface
 import android.webkit.JsResult
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
@@ -25,6 +28,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
+import android.widget.LinearLayout
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.URLDecoder
@@ -34,7 +38,78 @@ import org.json.JSONObject
 
 
 class MainActivity : Activity() {
-	private lateinit var webView: WebView
+	// Prototype: up to three characters at once, one WebView each, the way desktop gives every tab
+	// its own page. Each WebView gets its own bridge instances, so per-character native state (the
+	// log index in Logs) never mixes. NativeSessions relays session state between the pages and
+	// holds what they must share: the account credentials and the API ticket.
+	private inner class Session(val id: Int, val view: WebView) {
+		val background = BackgroundSession()
+		var state: JSONObject = JSONObject()
+	}
+
+	private val sessions = ArrayList<Session>()
+	private var nextSessionId = 1
+	private var activeId = 0
+	private val webView: WebView get() = (sessions.firstOrNull { it.id == activeId } ?: sessions[0]).view
+	private lateinit var container: ViewGroup
+	@Volatile private var credentials = ""
+	@Volatile private var sharedTicket = ""
+	private var backgroundHolders = 0
+	private var viewHeight = ViewGroup.LayoutParams.MATCH_PARENT
+	// System bar sizes in CSS pixels (top, right, bottom, left). The app draws behind the status and
+	// navigation bars and the page pads itself by these, so the theme runs to the screen edges.
+	private var barInsets = floatArrayOf(0f, 0f, 0f, 0f)
+	private var keyboardVisible = false
+
+	private fun insetsJs(): String {
+		val bottom = if(keyboardVisible) 0f else barInsets[2]
+		return "(function(s){s.setProperty('--sys-top','${barInsets[0]}px');s.setProperty('--sys-right','${barInsets[1]}px');" +
+			"s.setProperty('--sys-bottom','${bottom}px');s.setProperty('--sys-left','${barInsets[3]}px')})(document.documentElement.style)"
+	}
+
+	private fun pushInsets() {
+		val js = insetsJs()
+		for(session in sessions) session.view.evaluateJavascript(js, null)
+	}
+
+	@Suppress("DEPRECATION")
+	private fun drawBehindSystemBars() {
+		window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS or WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
+		window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+		window.statusBarColor = Color.TRANSPARENT
+		window.navigationBarColor = Color.TRANSPARENT
+		if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+			window.isStatusBarContrastEnforced = false
+			window.isNavigationBarContrastEnforced = false
+		}
+		window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+			View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+		container.setOnApplyWindowInsetsListener { _, insets ->
+			val density = resources.displayMetrics.density
+			// Stable insets are the bars themselves, without the keyboard, which the layout listener handles.
+			barInsets = floatArrayOf(insets.stableInsetTop / density, insets.stableInsetRight / density,
+				insets.stableInsetBottom / density, insets.stableInsetLeft / density)
+			pushInsets()
+			insets
+		}
+	}
+
+	// Lets the page pick dark or light bar icons to suit its theme. setTheme matches the iOS bridge,
+	// which the shared code already calls.
+	private inner class ViewBridge {
+		@JavascriptInterface
+		fun setTheme(@Suppress("UNUSED_PARAMETER") theme: String) {}
+
+		@JavascriptInterface
+		fun setLightBars(light: Boolean) = runOnUiThread {
+			@Suppress("DEPRECATION")
+			val mask = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+			@Suppress("DEPRECATION")
+			window.decorView.systemUiVisibility = if(light) window.decorView.systemUiVisibility or mask
+				else window.decorView.systemUiVisibility and mask.inv()
+		}
+	}
+
 	private val profileRegex = Regex("^https?://(www\\.)?f-list.net/c/([^/#]+)/?#?")
 	private val backgroundPlugin = Background(this)
 	private var debugPressed = 0
@@ -46,11 +121,118 @@ class MainActivity : Activity() {
 		return value?.let { JSONObject.quote(it) } ?: "null"
 	}
 
+	// The foreground service has to stay up while any character is connected, so each page holds
+	// its own claim and the service only stops when the last one lets go.
+	private inner class BackgroundSession {
+		private var on = false
+
+		@JavascriptInterface
+		fun start() = synchronized(this@MainActivity) {
+			if(on) return@synchronized
+			on = true
+			if(++backgroundHolders == 1) backgroundPlugin.start()
+		}
+
+		@JavascriptInterface
+		fun stop() = synchronized(this@MainActivity) {
+			if(!on) return@synchronized
+			on = false
+			if(--backgroundHolders == 0) backgroundPlugin.stop()
+		}
+	}
+
+	private inner class SessionsBridge(private val sessionId: Int) {
+		@JavascriptInterface
+		fun id(): Int = sessionId
+
+		@JavascriptInterface
+		fun max(): Int = MAX_SESSIONS
+
+		@JavascriptInterface
+		fun state(): String = synchronized(this@MainActivity) { snapshot().toString() }
+
+		@JavascriptInterface
+		fun report(json: String) {
+			runOnUiThread {
+				sessions.firstOrNull { it.id == sessionId }?.state = try { JSONObject(json) } catch(e: Exception) { JSONObject() }
+				broadcast()
+			}
+		}
+
+		@JavascriptInterface
+		fun switchTo(id: Int) = runOnUiThread { activate(id) }
+
+		@JavascriptInterface
+		fun add(): Boolean {
+			if(sessions.size >= MAX_SESSIONS) return false
+			runOnUiThread { addSession() }
+			return true
+		}
+
+		@JavascriptInterface
+		fun close(id: Int) = runOnUiThread { removeSession(id) }
+
+		@JavascriptInterface
+		fun setCredentials(json: String) { credentials = json }
+
+		@JavascriptInterface
+		fun getCredentials(): String = credentials
+
+		@JavascriptInterface
+		fun getTicket(): String = sharedTicket
+
+		@JavascriptInterface
+		fun setTicket(json: String) { sharedTicket = json }
+	}
+
+	private fun snapshot(): JSONObject {
+		val list = org.json.JSONArray()
+		for(session in sessions) list.put(JSONObject(session.state.toString()).put("id", session.id))
+		return JSONObject().put("active", activeId).put("max", MAX_SESSIONS).put("sessions", list)
+	}
+
+	private fun broadcast() {
+		val json = snapshot().toString()
+		for(session in sessions) session.view.evaluateJavascript("window.__solsticeSessions && window.__solsticeSessions($json)", null)
+	}
+
+	private fun activate(id: Int) {
+		if(sessions.none { it.id == id }) return
+		activeId = id
+		for(session in sessions) session.view.visibility = if(session.id == id) View.VISIBLE else View.GONE
+		webView.requestFocus()
+		broadcast()
+	}
+
+	private fun addSession() {
+		if(sessions.size >= MAX_SESSIONS) return
+		val view = WebView(this)
+		view.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, viewHeight)
+		container.addView(view)
+		val session = Session(nextSessionId++, view)
+		sessions.add(session)
+		setupWebView(session)
+		activate(session.id)
+	}
+
+	private fun removeSession(id: Int) {
+		if(sessions.size <= 1) return
+		val session = sessions.firstOrNull { it.id == id } ?: return
+		session.background.stop()
+		sessions.remove(session)
+		container.removeView(session.view)
+		session.view.destroy()
+		if(activeId == id) activate(sessions[0].id) else broadcast()
+	}
+
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		setContentView(R.layout.activity_main)
 		if(BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
-		webView = findViewById(R.id.webview)
+		container = findViewById(R.id.content)
+		val first = Session(nextSessionId++, findViewById(R.id.webview))
+		sessions.add(first)
+		activeId = first.id
 
 		// On many physical devices (especially OEM Android 11+), adjustResize doesn't reliably
 		// resize the WebView when the soft keyboard appears. We handle it manually here.
@@ -59,32 +241,43 @@ class MainActivity : Activity() {
 			val rect = Rect()
 			rootView.getWindowVisibleDisplayFrame(rect)
 			val heightDiff = rootView.height - rect.bottom
-			val params = webView.layoutParams
-			if (heightDiff > rootView.height * 0.15) {
-				// Keyboard visible — shrink WebView to the visible area
-				val newHeight = rect.bottom - rect.top
-				if (params.height != newHeight) {
-					params.height = newHeight
-					webView.layoutParams = params
-				}
-			} else {
-				// Keyboard hidden — restore WebView to full height
-				if (params.height != ViewGroup.LayoutParams.MATCH_PARENT) {
-					params.height = ViewGroup.LayoutParams.MATCH_PARENT
-					webView.layoutParams = params
+			// Keyboard visible: end at its top edge (the views start at the screen top, behind the status
+			// bar). Hidden: back to full height. The navigation bar sits under the keyboard while it is up,
+			// so the page stops padding for it.
+			val keyboard = heightDiff > rootView.height * 0.15
+			val wanted = if(keyboard) rect.bottom else ViewGroup.LayoutParams.MATCH_PARENT
+			if(keyboard != keyboardVisible) {
+				keyboardVisible = keyboard
+				pushInsets()
+			}
+			viewHeight = wanted
+			for(session in sessions) {
+				val params = session.view.layoutParams
+				if(params.height != wanted) {
+					params.height = wanted
+					session.view.layoutParams = params
 				}
 			}
 		}
-		webView.settings.javaScriptEnabled = true
-		webView.settings.mediaPlaybackRequiresUserGesture = false
-		webView.loadUrl("file:///android_asset/www/index.html")
-		webView.addJavascriptInterface(File(this), "NativeFile")
-		webView.addJavascriptInterface(Notifications(this), "NativeNotification")
-		webView.addJavascriptInterface(backgroundPlugin, "NativeBackground")
-		webView.addJavascriptInterface(Logs(this), "NativeLogs")
-		webView.addJavascriptInterface(Clipboard(this), "NativeClipboard")
-		webView.addJavascriptInterface(Sync { js -> runOnUiThread { webView.evaluateJavascript(js, null) } }, "SyncBridge")
-		webView.setDownloadListener { url, _, _, _, _ ->
+		drawBehindSystemBars()
+		setupWebView(first)
+		debugHandler.postDelayed(keepAlive, 10000);
+	}
+
+	private fun setupWebView(session: Session) {
+		val view = session.view
+		view.settings.javaScriptEnabled = true
+		view.settings.mediaPlaybackRequiresUserGesture = false
+		view.loadUrl("file:///android_asset/www/index.html")
+		view.addJavascriptInterface(File(this), "NativeFile")
+		view.addJavascriptInterface(Notifications(this), "NativeNotification")
+		view.addJavascriptInterface(session.background, "NativeBackground")
+		view.addJavascriptInterface(Logs(this), "NativeLogs")
+		view.addJavascriptInterface(Clipboard(this), "NativeClipboard")
+		view.addJavascriptInterface(Sync { js -> runOnUiThread { view.evaluateJavascript(js, null) } }, "SyncBridge")
+		view.addJavascriptInterface(SessionsBridge(session.id), "NativeSessions")
+		view.addJavascriptInterface(ViewBridge(), "NativeView")
+		view.setDownloadListener { url, _, _, _, _ ->
 			if(Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
 				val permission = checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
 				if(permission != PackageManager.PERMISSION_GRANTED)
@@ -98,7 +291,7 @@ class MainActivity : Activity() {
 			val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 			downloadManager.addCompletedDownload(name, name, false, "text/plain", file.absolutePath, file.length(), true)
 		}
-		webView.webChromeClient = object : WebChromeClient() {
+		view.webChromeClient = object : WebChromeClient() {
 			override fun onJsAlert(view: WebView, url: String, message: String, result: JsResult): Boolean {
 				AlertDialog.Builder(this@MainActivity).setTitle(R.string.app_name).setMessage(message).setPositiveButton(R.string.ok, { _, _ -> }).setOnDismissListener({ result.confirm() }).show()
 				return true
@@ -135,12 +328,12 @@ class MainActivity : Activity() {
 				return true
 			}
 		}
-		webView.webViewClient = object : WebViewClient() {
+		view.webViewClient = object : WebViewClient() {
 			override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
 				val match = profileRegex.find(url)
 				if(match != null) {
 					val char = URLDecoder.decode(match.groupValues[2], "UTF-8")
-					webView.evaluateJavascript("document.dispatchEvent(new CustomEvent('open-profile',{detail:${jsQuote(char)}}))", null)
+					view.evaluateJavascript("document.dispatchEvent(new CustomEvent('open-profile',{detail:${jsQuote(char)}}))", null)
 				} else {
 					var uri = Uri.parse(url)
 					if(uri.scheme == "profile") uri = Uri.parse("https://www.f-list.net/c/${uri.authority}")
@@ -149,17 +342,17 @@ class MainActivity : Activity() {
 				return true
 			}
 
-			override fun onPageFinished(view: WebView?, url: String?) {
-				super.onPageFinished(view, url)
-				webView.evaluateJavascript("window.setupPlatform('android')", null)
-				webView.evaluateJavascript("(function(n){n.listFiles=function(p){return JSON.parse(n.listFilesN(p))};" +
+			override fun onPageFinished(page: WebView?, url: String?) {
+				super.onPageFinished(page, url)
+				view.evaluateJavascript(insetsJs(), null)
+				view.evaluateJavascript("window.setupPlatform('android')", null)
+				view.evaluateJavascript("(function(n){n.listFiles=function(p){return JSON.parse(n.listFilesN(p))};" +
 						"n.listDirectories=function(p){return JSON.parse(n.listDirectoriesN(p))}})(NativeFile)", null)
-				webView.evaluateJavascript("(function(n){n.init=function(c){return JSON.parse(n.initN(c))};n.getBacklog=function(k){return JSON.parse(n.getBacklogN(k))};" +
+				view.evaluateJavascript("(function(n){n.init=function(c){return JSON.parse(n.initN(c))};n.getBacklog=function(k){return JSON.parse(n.getBacklogN(k))};" +
 						"n.getLogs=function(c,k,d){return JSON.parse(n.getLogsN(c,k,d))};n.loadIndex=function(c){return JSON.parse(n.loadIndexN(c))};" +
 						"n.getCharacters=function(){return JSON.parse(n.getCharactersN())}})(NativeLogs)", null)
 			}
 		}
-		debugHandler.postDelayed(keepAlive, 10000);
 	}
 
 	private fun addFolder(folder: java.io.File, out: ZipOutputStream, path: String) {
@@ -188,11 +381,12 @@ class MainActivity : Activity() {
 	companion object {
 		private const val FILE_CHOOSER_REQUEST = 1001
 		private const val CAMERA_PERMISSION_REQUEST = 1002
+		private const val MAX_SESSIONS = 3
 	}
 
 	val keepAlive = object : Runnable {
 		override fun run() {
-			webView.dispatchWindowVisibilityChanged(View.VISIBLE);
+			for(session in sessions) session.view.dispatchWindowVisibilityChanged(View.VISIBLE);
 			debugHandler.postDelayed(this, 10000)
 		}
 	}
@@ -301,13 +495,14 @@ class MainActivity : Activity() {
 		// the background without running any more JavaScript. A WebView's document visibility follows
 		// the view rather than the activity lifecycle, so visibilitychange is not dependable here;
 		// nudge the web layer directly. The flush itself writes through the synchronous File bridge.
-		webView.evaluateJavascript("window.solsticeFlushDrafts && window.solsticeFlushDrafts()", null)
+		for(session in sessions) session.view.evaluateJavascript("window.solsticeFlushDrafts && window.solsticeFlushDrafts()", null)
 	}
 
 	override fun onDestroy() {
 		super.onDestroy()
+		val views = sessions.map { it.view }
 		findViewById<ViewGroup>(R.id.content).removeAllViews()
-		webView.destroy()
+		for(view in views) view.destroy()
 		backgroundPlugin.stop()
 	}
 }

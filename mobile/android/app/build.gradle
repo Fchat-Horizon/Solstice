@@ -11,12 +11,21 @@ android {
         targetSdk 35
         versionCode 56
         versionName "2026.10.0"
+        manifestPlaceholders = [appLabel: "@string/app_name"]
     }
+    // Prototype builds of the character switcher: -Pswitcher=tabs|drawer|sheet installs beside the
+    // normal app under its own id and label, so the three designs can be compared side by side.
+    def switcher = project.findProperty('switcher')
     flavorDimensions "brand"
     productFlavors {
         solstice {
             dimension "brand"
             applicationId "net.f_list.solstice"
+            if(switcher) {
+                applicationIdSuffix ".switcher.${switcher}"
+                versionNameSuffix "-switcher-${switcher}"
+                manifestPlaceholders = [appLabel: "Solstice ${[tabs: 'A', drawer: 'B', sheet: 'C'][switcher] ?: switcher}"]
+            }
         }
     }
     buildTypes {

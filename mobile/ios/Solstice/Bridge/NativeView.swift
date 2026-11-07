@@ -5,9 +5,7 @@ import WebKit
 // setTheme(theme) whenever window.NativeView exists, so the native window background can
 // match the web theme and avoid a flash of the wrong colour during navigation/reload.
 final class NativeView: NSObject, WKScriptMessageHandlerWithReply {
-    weak var host: WebViewController?
-
-    init(host: WebViewController) { self.host = host }
+    weak var host: ChatPage?
 
     func userContentController(_ userContentController: WKUserContentController,
                               didReceive message: WKScriptMessage,

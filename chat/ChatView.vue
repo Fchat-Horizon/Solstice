@@ -45,6 +45,8 @@
             </span>
           </div>
         </div>
+        <!-- Mobile character switcher prototype (design B), registered by mobile/chat.ts. -->
+        <mobile-session-card v-if="hasSessionCard"></mobile-session-card>
         <div>
           <div class="userInfo-buttons-container">
             <button
@@ -544,6 +546,12 @@
       };
     },
     computed: {
+      hasSessionCard(): boolean {
+        return (
+          (window as { __solsticeSessionCard?: boolean })
+            .__solsticeSessionCard === true
+        );
+      },
       sortedChannelGroups(): any[] {
         return [...core.conversations.channelGroups].sort(
           (a, b) => a.order - b.order

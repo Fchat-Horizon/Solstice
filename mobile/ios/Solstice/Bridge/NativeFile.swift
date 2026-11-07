@@ -6,7 +6,7 @@ import WebKit
 // "/" as the root and uses names like "!settings", "<character>/<key>" and
 // "<character>/logs/<key>".
 final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
-    weak var host: WebViewController?
+    weak var host: ChatPage?
     let rootURL: URL
 
     override init() {
@@ -139,7 +139,7 @@ final class NativeFile: NSObject, WKScriptMessageHandlerWithReply {
 
     // Writes a picked import file into app storage and returns its relative name, so the web
     // layer reads it back via getSize/readBytes (the same temp-file flow Android uses) and
-    // deletes it when done. Called by WebViewController's document-picker delegate.
+    // deletes it when done. Called by ChatPage's document-picker delegate.
     func stageImportFile(_ data: Data) -> String? {
         let name = ".import.tmp"
         do {

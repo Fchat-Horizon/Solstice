@@ -18,20 +18,38 @@ import AVFoundation
 // host honors background audio for the guest. If iOS kills the app on backgrounding under
 // LiveContainer, enable background audio / "keep alive" for Solstice in LiveContainer's
 // per-app settings (or run it standalone). See the README "iOS limitations" section.
+//
+// With several characters signed in (ChatPage), one instance serves every page. Each page claims the
+// keep-alive when its character connects and lets go when it disconnects, keyed by the page's
+// WKUserContentController, and the audio only stops once the last claim is gone (Android's prototype
+// does the same with its foreground service).
 final class NativeBackground: NSObject, WKScriptMessageHandlerWithReply {
     private var taskId: UIBackgroundTaskIdentifier = .invalid
     private var player: AVAudioPlayer?
     private var active = false
+    private var claims: Set<ObjectIdentifier> = []
 
     func userContentController(_ userContentController: WKUserContentController,
                               didReceive message: WKScriptMessage,
                               replyHandler: @escaping (Any?, String?) -> Void) {
         guard let call = BridgeCall(message) else { return replyHandler(nil, "bad call") }
+        let claim = ObjectIdentifier(userContentController)
         switch call.method {
-        case "start": start(); replyHandler(nil, nil)
-        case "stop": stop(); replyHandler(nil, nil)
+        case "start":
+            claims.insert(claim)
+            start()
+            replyHandler(nil, nil)
+        case "stop":
+            release(userContentController)
+            replyHandler(nil, nil)
         default: replyHandler(nil, "unknown method \(call.method)")
         }
+    }
+
+    /// Drops a page's claim (its character disconnected, or the page was closed).
+    func release(_ userContentController: WKUserContentController) {
+        claims.remove(ObjectIdentifier(userContentController))
+        if claims.isEmpty { stop() }
     }
 
     private func start() {

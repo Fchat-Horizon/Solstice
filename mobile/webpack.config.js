@@ -121,6 +121,8 @@ const config = {
     new webpack.DefinePlugin({
       'process.versions': JSON.stringify({ node: '22.0.0' }),
       'process.version': JSON.stringify('v22.0.0'),
+      // Character switcher prototypes: tabs | drawer | sheet, or '' for the normal single-character app.
+      'process.env.SWITCHER_DESIGN': JSON.stringify(process.env.SWITCHER_DESIGN || ''),
     }),
     // Bundle the sound-theme assets into www/sound-themes so the WebView can
     // load themed sounds at ./sound-themes/<theme>/... (loaded by URL at runtime,
@@ -165,7 +167,8 @@ const config = {
 module.exports = function (mode) {
   const cacheConfig = {
     type: 'filesystem',
-    name: `mobile-${mode}`,
+    // The switcher design is baked in by DefinePlugin, which the cache does not track, so key on it.
+    name: `mobile-${mode}${process.env.SWITCHER_DESIGN ? '-' + process.env.SWITCHER_DESIGN : ''}`,
     buildDependencies: {
       config: [
         __filename,

@@ -11,9 +11,12 @@ import AudioToolbox
 // process keeps it alive: we answer PIN natively, and buffer inbound frames while backgrounded so
 // the WebView catches up on foreground. The JS side (mobile/NativeSocketConnection.ts) drives
 // connect/send/close and receives events via window.__nativeSocketEvent, dispatched through the
-// WebViewController's web view.
+// web view of the ChatPage this socket belongs to (one socket per signed-in character).
 final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionWebSocketDelegate {
-    weak var host: WebViewController?
+    weak var host: ChatPage?
+    /// The ChatPage id, so this character's notifications stay apart from the others' and a tap
+    /// brings the right page to the front.
+    var pageId = 1
 
     private var session: URLSession?
     private var task: URLSessionWebSocketTask?
@@ -41,10 +44,13 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
     private var globalWatched: Set<String> = []
     private var channels: [String: ChannelCfg] = [:]
 
-    // One notification per conversation (Discord-style): each conversation key maps to how many unread
-    // messages its single notification represents. Drives the "(N)" title suffix and the app icon badge;
-    // reset per conversation when the user opens it (clearConversation).
-    private var unreadCounts: [String: Int] = [:]
+    // One notification per conversation (Discord-style): each notification identifier (the conversation
+    // key, tagged with the page once several characters are signed in) maps to how many unread messages
+    // its single notification represents. Drives the "(N)" title suffix and the app icon badge; reset per
+    // conversation when the user opens it (clearConversation). Shared by every page's socket, so the
+    // badge counts all characters; main thread only, like the rest of the socket state.
+    private static var unreadCounts: [String: Int] = [:]
+    private var ownIdentifiers: Set<String> = []
     // Rate-limit the notification vibration so a busy notify-all channel can't buzz continuously.
     private var lastVibrateMs = 0
 
@@ -221,8 +227,10 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         // One notification per conversation: count this message, then reuse the conversation key as the
         // notification identifier so a new message REPLACES that conversation's notification instead of
         // stacking a fresh one. threadIdentifier keeps conversations grouped in Notification Center.
-        let count = (unreadCounts[key] ?? 0) + 1
-        unreadCounts[key] = count
+        let identifier = NativeNotification.identifier(for: key, page: pageId)
+        let count = (Self.unreadCounts[identifier] ?? 0) + 1
+        Self.unreadCounts[identifier] = count
+        ownIdentifiers.insert(identifier)
 
         let content = UNMutableNotificationContent()
         // Surface the unread count once a conversation has more than one waiting message ("Sarah (3)").
@@ -231,10 +239,10 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         content.body = body
         // The current theme's PM/highlight sound (copied to Library/Sounds), or the system default.
         content.sound = SoundThemes.notificationSound(for: "attention")
-        content.userInfo = ["data": key]
-        content.threadIdentifier = key
-        // App icon badge = total unread messages across all conversations.
-        content.badge = NSNumber(value: unreadCounts.values.reduce(0, +))
+        content.userInfo = ["data": key, "session": pageId]
+        content.threadIdentifier = identifier
+        // App icon badge = total unread messages across all conversations of every character.
+        content.badge = NSNumber(value: Self.unreadCounts.values.reduce(0, +))
 
         // Vibrate. UIFeedbackGenerator only fires while foregrounded, but the audio keep-alive keeps this
         // process alive, so AudioServicesPlaySystemSound can still drive the haptic motor from the
@@ -247,7 +255,7 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
 
         func submit(_ attachments: [UNNotificationAttachment]) {
             content.attachments = attachments
-            let request = UNNotificationRequest(identifier: key, content: content, trigger: nil)
+            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
             UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
         }
 
@@ -278,9 +286,16 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
     // delivered notification, reset its unread count, and refresh the app icon badge to the new total.
     private func clearConversation(_ key: String) {
         guard !key.isEmpty else { return }
-        unreadCounts.removeValue(forKey: key)
-        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [key])
-        let total = unreadCounts.values.reduce(0, +)
+        clear([NativeNotification.identifier(for: key, page: pageId)])
+    }
+
+    private func clear(_ identifiers: [String]) {
+        for identifier in identifiers {
+            Self.unreadCounts.removeValue(forKey: identifier)
+            ownIdentifiers.remove(identifier)
+        }
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiers)
+        let total = Self.unreadCounts.values.reduce(0, +)
         if #available(iOS 16.0, *) {
             UNUserNotificationCenter.current().setBadgeCount(total)
         } else {
@@ -302,6 +317,13 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         for entry in pending {
             emit("message", WebViewController.jsString(entry.frame), String(entry.timeMs))
         }
+    }
+
+    /// The page is going away (its character was logged out from the switcher): close the socket
+    /// without telling the page, and take this character's notifications off the badge.
+    func shutdown() {
+        closeSocket()
+        clear(Array(ownIdentifiers))
     }
 
     private func closeSocket() {
