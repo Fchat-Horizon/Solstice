@@ -134,6 +134,8 @@
         interface Window {
             NativeView: {
                 setTheme(theme: string): void
+                // Android only: dark bar icons on a light theme.
+                setLightBars?(light: boolean): void
             } | undefined;
         }
 
@@ -228,6 +230,18 @@
         methods: {
             avatar(name: string): string {
                 return characterImage(name);
+            },
+            // Android draws the app behind the status and navigation bars, so their icons have to suit the
+            // theme: dark on a light background, light on a dark one.
+            updateBars(): void {
+                const view = window.NativeView;
+                if(view === undefined || typeof view.setLightBars !== 'function') return;
+                const raw = getComputedStyle(document.body).getPropertyValue('--bs-body-bg').trim();
+                const hex = /^#([0-9a-f]{6})$/i.exec(raw);
+                const rgb = /rgba?\((\d+)\D+(\d+)\D+(\d+)/i.exec(raw);
+                const [r, g, b] = hex !== null ? [0, 2, 4].map((i) => parseInt(hex[1].substr(i, 2), 16))
+                    : rgb !== null ? [1, 2, 3].map((i) => Number(rgb[i])) : [0, 0, 0];
+                view.setLightBars((0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6);
             },
             switchTo, addSession, canAddSession,
             closeSession(id: number): void {
@@ -353,6 +367,8 @@
             // it survives persistence via _.merge, so read it dynamically.
             setLanguage((settings as any).displayLanguage);
             (core.state as any).generalSettings = settings;
+            // The theme's stylesheet goes in with the next render, so read its colours after that.
+            this.$watch(() => (this as any).activeTheme, () => this.$nextTick(() => (this as any).updateBars()), {immediate: true});
             (window as any).__generalSettings = settings;
             (window as any).__setGeneralSettings = setGeneralSettings;
             // Document events, not EventBus: Chat.vue calls EventBus.clear() on every disconnect,
@@ -370,6 +386,7 @@
                 this.$watch(() => sessions.active === sessions.self, (visible: boolean) => {
                     window.dispatchEvent(new Event(visible ? 'focus' : 'blur'));
                     (this as any).sheetOpen = false;
+                    if(visible) (this as any).updateBars();
                 });
                 // Design C: the avatar in the chat box toolbar opens the sheet.
                 if(switcherDesign === 'sheet')
@@ -417,6 +434,18 @@
     }
 
     /*
+     * Space to keep clear at each screen edge: the iOS safe areas, or on Android the status and
+     * navigation bars, which the app draws behind (MainActivity sets --sys-* to their sizes). The theme
+     * then runs to the screen edges instead of stopping at black bars.
+     */
+    :root {
+        --inset-top: max(env(safe-area-inset-top, 0px), var(--sys-top, 0px));
+        --inset-right: max(env(safe-area-inset-right, 0px), var(--sys-right, 0px));
+        --inset-bottom: max(env(safe-area-inset-bottom, 0px), var(--sys-bottom, 0px));
+        --inset-left: max(env(safe-area-inset-left, 0px), var(--sys-left, 0px));
+    }
+
+    /*
      * The sidebar drawers sit inside #page's padding (and, on iOS, inside the safe-area padding on html),
      * but their backdrop is a full-screen .modal-backdrop, so an open drawer had a darkened gutter on its
      * outer, top and bottom edges. Invisible on dark themes, obvious on light ones like peached. Stretch
@@ -424,25 +453,25 @@
      * while its contents and the expander button stay where they were.
      */
     .sidebar-wrapper.open .sidebar {
-        top: calc(-1 * (var(--page-pad) + env(safe-area-inset-top, 0px)));
-        bottom: calc(-1 * (var(--page-pad) + env(safe-area-inset-bottom, 0px)));
-        padding-top: calc(var(--page-pad) + env(safe-area-inset-top, 0px));
+        top: calc(-1 * (var(--page-pad) + var(--inset-top)));
+        bottom: calc(-1 * (var(--page-pad) + var(--inset-bottom)));
+        padding-top: calc(var(--page-pad) + var(--inset-top));
         /* .sidebar already has 10px of bottom padding (scss/_chat.scss). */
-        padding-bottom: calc(10px + var(--page-pad) + env(safe-area-inset-bottom, 0px));
+        padding-bottom: calc(10px + var(--page-pad) + var(--inset-bottom));
     }
 
     .sidebar-wrapper.open .sidebar-left {
-        left: calc(-1 * (var(--page-pad) + env(safe-area-inset-left, 0px)));
-        padding-left: calc(var(--page-pad) + env(safe-area-inset-left, 0px));
+        left: calc(-1 * (var(--page-pad) + var(--inset-left)));
+        padding-left: calc(var(--page-pad) + var(--inset-left));
     }
 
     .sidebar-wrapper.open .sidebar-right {
-        right: calc(-1 * (var(--page-pad) + env(safe-area-inset-right, 0px)));
-        padding-right: calc(var(--page-pad) + env(safe-area-inset-right, 0px));
+        right: calc(-1 * (var(--page-pad) + var(--inset-right)));
+        padding-right: calc(var(--page-pad) + var(--inset-right));
     }
 
     html, .modal {
-       padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+       padding: var(--inset-top) var(--inset-right) var(--inset-bottom) var(--inset-left);
     }
 
     /*
@@ -519,8 +548,9 @@
         display: flex;
         align-items: center;
         gap: 6px;
-        margin: calc(-1 * var(--page-pad)) calc(-1 * var(--page-pad)) 6px;
-        padding: 6px var(--page-pad);
+        /* Up under the status bar too, so the bar shows the strip rather than a band of page. */
+        margin: calc(-1 * (var(--page-pad) + var(--inset-top))) calc(-1 * var(--page-pad)) 6px;
+        padding: calc(6px + var(--inset-top)) var(--page-pad) 6px;
         background: var(--bs-tertiary-bg);
         border-bottom: 1px solid var(--bs-border-color);
         overflow-x: auto;
@@ -673,7 +703,7 @@
         background: var(--bs-body-bg);
         color: var(--bs-body-color);
         border-radius: 18px 18px 0 0;
-        padding: 10px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+        padding: 10px 16px calc(16px + var(--inset-bottom));
         box-shadow: 0 -8px 30px rgba(0, 0, 0, .35);
     }
 

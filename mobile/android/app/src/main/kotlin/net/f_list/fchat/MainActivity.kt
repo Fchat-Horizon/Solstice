@@ -7,6 +7,7 @@ import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
@@ -18,6 +19,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.JsResult
 import android.webkit.PermissionRequest
@@ -54,6 +56,59 @@ class MainActivity : Activity() {
 	@Volatile private var sharedTicket = ""
 	private var backgroundHolders = 0
 	private var viewHeight = ViewGroup.LayoutParams.MATCH_PARENT
+	// System bar sizes in CSS pixels (top, right, bottom, left). The app draws behind the status and
+	// navigation bars and the page pads itself by these, so the theme runs to the screen edges.
+	private var barInsets = floatArrayOf(0f, 0f, 0f, 0f)
+	private var keyboardVisible = false
+
+	private fun insetsJs(): String {
+		val bottom = if(keyboardVisible) 0f else barInsets[2]
+		return "(function(s){s.setProperty('--sys-top','${barInsets[0]}px');s.setProperty('--sys-right','${barInsets[1]}px');" +
+			"s.setProperty('--sys-bottom','${bottom}px');s.setProperty('--sys-left','${barInsets[3]}px')})(document.documentElement.style)"
+	}
+
+	private fun pushInsets() {
+		val js = insetsJs()
+		for(session in sessions) session.view.evaluateJavascript(js, null)
+	}
+
+	@Suppress("DEPRECATION")
+	private fun drawBehindSystemBars() {
+		window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS or WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
+		window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+		window.statusBarColor = Color.TRANSPARENT
+		window.navigationBarColor = Color.TRANSPARENT
+		if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+			window.isStatusBarContrastEnforced = false
+			window.isNavigationBarContrastEnforced = false
+		}
+		window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+			View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+		container.setOnApplyWindowInsetsListener { _, insets ->
+			val density = resources.displayMetrics.density
+			// Stable insets are the bars themselves, without the keyboard, which the layout listener handles.
+			barInsets = floatArrayOf(insets.stableInsetTop / density, insets.stableInsetRight / density,
+				insets.stableInsetBottom / density, insets.stableInsetLeft / density)
+			pushInsets()
+			insets
+		}
+	}
+
+	// Lets the page pick dark or light bar icons to suit its theme. setTheme matches the iOS bridge,
+	// which the shared code already calls.
+	private inner class ViewBridge {
+		@JavascriptInterface
+		fun setTheme(@Suppress("UNUSED_PARAMETER") theme: String) {}
+
+		@JavascriptInterface
+		fun setLightBars(light: Boolean) = runOnUiThread {
+			@Suppress("DEPRECATION")
+			val mask = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+			@Suppress("DEPRECATION")
+			window.decorView.systemUiVisibility = if(light) window.decorView.systemUiVisibility or mask
+				else window.decorView.systemUiVisibility and mask.inv()
+		}
+	}
 
 	private val profileRegex = Regex("^https?://(www\\.)?f-list.net/c/([^/#]+)/?#?")
 	private val backgroundPlugin = Background(this)
@@ -186,8 +241,15 @@ class MainActivity : Activity() {
 			val rect = Rect()
 			rootView.getWindowVisibleDisplayFrame(rect)
 			val heightDiff = rootView.height - rect.bottom
-			// Keyboard visible: shrink to the visible area. Hidden: back to full height.
-			val wanted = if(heightDiff > rootView.height * 0.15) rect.bottom - rect.top else ViewGroup.LayoutParams.MATCH_PARENT
+			// Keyboard visible: end at its top edge (the views start at the screen top, behind the status
+			// bar). Hidden: back to full height. The navigation bar sits under the keyboard while it is up,
+			// so the page stops padding for it.
+			val keyboard = heightDiff > rootView.height * 0.15
+			val wanted = if(keyboard) rect.bottom else ViewGroup.LayoutParams.MATCH_PARENT
+			if(keyboard != keyboardVisible) {
+				keyboardVisible = keyboard
+				pushInsets()
+			}
 			viewHeight = wanted
 			for(session in sessions) {
 				val params = session.view.layoutParams
@@ -197,6 +259,7 @@ class MainActivity : Activity() {
 				}
 			}
 		}
+		drawBehindSystemBars()
 		setupWebView(first)
 		debugHandler.postDelayed(keepAlive, 10000);
 	}
@@ -213,6 +276,7 @@ class MainActivity : Activity() {
 		view.addJavascriptInterface(Clipboard(this), "NativeClipboard")
 		view.addJavascriptInterface(Sync { js -> runOnUiThread { view.evaluateJavascript(js, null) } }, "SyncBridge")
 		view.addJavascriptInterface(SessionsBridge(session.id), "NativeSessions")
+		view.addJavascriptInterface(ViewBridge(), "NativeView")
 		view.setDownloadListener { url, _, _, _, _ ->
 			if(Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
 				val permission = checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -280,6 +344,7 @@ class MainActivity : Activity() {
 
 			override fun onPageFinished(page: WebView?, url: String?) {
 				super.onPageFinished(page, url)
+				view.evaluateJavascript(insetsJs(), null)
 				view.evaluateJavascript("window.setupPlatform('android')", null)
 				view.evaluateJavascript("(function(n){n.listFiles=function(p){return JSON.parse(n.listFilesN(p))};" +
 						"n.listDirectories=function(p){return JSON.parse(n.listDirectoriesN(p))}})(NativeFile)", null)
