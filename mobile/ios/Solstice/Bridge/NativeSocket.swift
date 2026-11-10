@@ -18,11 +18,12 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
     private var session: URLSession?
     private var task: URLSessionWebSocketTask?
     private var inBackground = false
-    // Buffered frames carry the time they arrived, so the WebView can stamp them with their real
-    // arrival time on replay instead of the (later) resume time.
-    private var buffer: [(frame: String, timeMs: Int)] = []
+    // Frames that arrive while backgrounded, with their arrival times so the WebView stamps them with
+    // those instead of the (later) resume time. See FrameBuffer for what is kept.
+    private var buffer = FrameBuffer()
     private var closeEmitted = false
-    private static let bufferCap = 3000
+    // Frames per evaluateJavaScript call when replaying the buffer on resume.
+    private static let replayBatch = 500
 
     // Background-notify policy pushed from JS (mobile/notifyConfig.ts) on connect and whenever it
     // changes, so native can reproduce the foreground decision (chat/conversations.ts) while JS is
@@ -126,10 +127,7 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
             // JS is suspended, so it can't fire notifications. Inspect PMs/highlights natively and
             // post a local notification, then buffer the frame for the WebView to catch up on resume.
             notifyIfNeeded(text)
-            buffer.append((text, Int(Date().timeIntervalSince1970 * 1000)))
-            if buffer.count > Self.bufferCap {
-                buffer.removeFirst(buffer.count - Self.bufferCap)
-            }
+            buffer.append(text, timeMs: Int(Date().timeIntervalSince1970 * 1000))
         } else {
             emit("message", WebViewController.jsString(text))
         }
@@ -297,11 +295,17 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
 
     @objc private func willForeground() {
         inBackground = false
-        let pending = buffer
-        buffer.removeAll()
-        for entry in pending {
-            emit("message", WebViewController.jsString(entry.frame), String(entry.timeMs))
+        let (frames, needsResync) = buffer.drain()
+        // Replay in batches: one evaluateJavaScript per frame is slow for a long backlog, and
+        // separate batches let the WebView render between them.
+        for start in stride(from: 0, to: frames.count, by: Self.replayBatch) {
+            let batch = frames[start..<min(start + Self.replayBatch, frames.count)]
+            let items = batch.map { "[\(WebViewController.jsString($0.text)),\($0.timeMs)]" }
+            emit("batch", "[\(items.joined(separator: ","))]")
         }
+        // The buffer overflowed and dropped presence, so the online list is stale. The WebView
+        // reconnects once it has handled the backlog, and the fresh login resends the full list.
+        if needsResync && task != nil && !closeEmitted { emit("resync", "undefined") }
     }
 
     private func closeSocket() {
@@ -337,8 +341,7 @@ final class NativeSocket: NSObject, WKScriptMessageHandlerWithReply, URLSessionW
         emit("close", payload)
     }
 
-    private func emit(_ type: String, _ payloadJS: String, _ extraJS: String? = nil) {
-        let extra = extraJS.map { ", \($0)" } ?? ""
-        host?.evalJS("window.__nativeSocketEvent && window.__nativeSocketEvent('\(type)', \(payloadJS)\(extra))")
+    private func emit(_ type: String, _ payloadJS: String) {
+        host?.evalJS("window.__nativeSocketEvent && window.__nativeSocketEvent('\(type)', \(payloadJS))")
     }
 }
